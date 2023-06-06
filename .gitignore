@@ -1,0 +1,11 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+/.idea
+/__pycache__
+config.py
+main_pkl
+rating_pkl
+results.txt
+mllu_simulation.txt
+queue_data.txt
