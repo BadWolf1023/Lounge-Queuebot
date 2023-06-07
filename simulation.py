@@ -73,6 +73,7 @@ def get_mmrs(player_list, ladder_type: str):
                                                  player_rating[1],
                                                  cur_time-datetime.timedelta(minutes=min_queued),
                                                  False,
+                                                 False,
                                                  0,
                                                  0,
                                                  cur_time)

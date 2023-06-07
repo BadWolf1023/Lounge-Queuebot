@@ -260,7 +260,7 @@ class TestingCog(commands.Cog):
         results = []
         for player in player_names:
             update_player_activity(player.strip(), interaction.channel.id)
-            result = await add_player_to_queue(interaction, player.strip(), ladder, send_message=False)
+            result = await add_player_to_queue(interaction, player.strip(), False, ladder, send_message=False)
             results.append(result)
         await send_queue_data_file(interaction, results, "results.txt")
 
@@ -298,7 +298,7 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
 
 
-async def add_player_to_queue(interaction: discord.Interaction, player_name: str, ladder_type: str, send_message=True):
+async def add_player_to_queue(interaction: discord.Interaction, player_name: str, can_host: bool, ladder_type: str, send_message=True):
     queue = RT_QUEUE if ladder_type == shared.RT_LADDER else CT_QUEUE
     if player_name.lower() in queue:
         msg = f"{player_name} is already in the {ladder_type.upper()} queue."
@@ -318,6 +318,7 @@ async def add_player_to_queue(interaction: discord.Interaction, player_name: str
                                                mmr=player_rating[0],
                                                lr=player_rating[1],
                                                time_queued=cur_time,
+                                               can_host=can_host,
                                                drop_warned=False,
                                                queue_channel_id=interaction.channel_id,
                                                discord_id=interaction.user.id,
@@ -355,11 +356,12 @@ async def list_queue(interaction: discord.Interaction, ladder_type: str):
 @bot.tree.command(name="can", description="Join the queue")
 @app_commands.describe(host="Can you host?")
 async def can(interaction: discord.Interaction, host: Literal["Yes", "No"] = "Yes"):
+    can_host = host == "Yes"
     update_player_activity(interaction.user.display_name, interaction.channel.id)
     if interaction.channel_id in RT_QUEUE_CHANNELS:
-        await add_player_to_queue(interaction, interaction.user.display_name, shared.RT_LADDER)
+        await add_player_to_queue(interaction, interaction.user.display_name, can_host, shared.RT_LADDER)
     elif interaction.channel_id in CT_QUEUE_CHANNELS:
-        await add_player_to_queue(interaction, interaction.user.display_name, shared.CT_LADDER)
+        await add_player_to_queue(interaction, interaction.user.display_name, can_host, shared.CT_LADDER)
     else:
         await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
 
