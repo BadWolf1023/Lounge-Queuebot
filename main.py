@@ -113,7 +113,8 @@ class Room:
         await self.send_teams_at_start()
 
     async def send_vote_notification(self):
-        await self.get_room_channel().send(f"{self.mention_all_players_str()} the event has started. Cast your vote below.")
+        await self.get_room_channel().send(
+            f"{self.mention_all_players_str()} the event has started. Cast your vote below.")
 
     async def cast_vote(self):
         await self.send_vote_notification()
@@ -352,7 +353,8 @@ async def list_queue(interaction: discord.Interaction, ladder_type: str):
 
 
 @bot.tree.command(name="can", description="Join the queue")
-async def can(interaction: discord.Interaction):
+@app_commands.describe(host="Can you host?")
+async def can(interaction: discord.Interaction, host: Literal["Yes", "No"] = "Yes"):
     update_player_activity(interaction.user.display_name, interaction.channel.id)
     if interaction.channel_id in RT_QUEUE_CHANNELS:
         await add_player_to_queue(interaction, interaction.user.display_name, shared.RT_LADDER)
