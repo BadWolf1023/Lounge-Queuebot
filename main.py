@@ -1,5 +1,5 @@
 import random
-from typing import Literal, Dict, Tuple
+from typing import Literal, Dict, Tuple, List
 import discord
 from discord import app_commands, ui
 from discord.ext import commands, tasks
@@ -7,11 +7,11 @@ from config import TOKEN
 import simulation
 import shared
 import rating
-from typing import List
 import logging
 import datetime
 import pickle
 import algorithm
+import fc_commands
 from collections import defaultdict
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
@@ -274,6 +274,7 @@ class TestingCog(commands.Cog):
 async def setup(bot_: commands.Bot) -> None:
     await bot_.add_cog(AdminCog(bot_))
     await bot_.add_cog(TestingCog(bot_))
+    await fc_commands.setup(bot_)
 
 
 @bot.event
@@ -289,7 +290,6 @@ async def on_ready():
             print(f"Synced {len(synced)} commands: {synced}")
             pull_mmr.start()
             run_routines.start()
-            drop_warn.start()
         except Exception as e:
             print(e)
 
