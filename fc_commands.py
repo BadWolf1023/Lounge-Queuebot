@@ -2,6 +2,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import re
+import pickle
+import logging
 
 from typing import Literal, Dict, Tuple
 
@@ -32,13 +34,33 @@ class FCCog(commands.Cog):
                                                     f"digit): `xxxx-xxxx-xxxx`", ephemeral=True)
         else:
             FC_MAP[interaction.user.id] = fc
+            save_data()
             await interaction.response.send_message(f"I have set your FC to {fc}", ephemeral=True)
 
     @fc_group.command(name="remove", description="Remove your FC")
     async def view_category(self, interaction: discord.Interaction):
         if interaction.user.id in FC_MAP:
             FC_MAP.pop(interaction.user.id)
+            save_data()
         await interaction.response.send_message(f"I have deleted your FC", ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(FCCog(bot))
+
+
+def save_data():
+    to_dump = {"FC_MAP": FC_MAP}
+    with open("fc_data_pkl", "wb") as f:
+        pickle.dump(to_dump, f)
+
+
+def load_data():
+    try:
+        with open("fc_data_pkl", "rb") as f:
+            to_load = pickle.load(f)
+            FC_MAP.clear()
+            FC_MAP.update(to_load["FC_MAP"])
+    except Exception as e:
+        logging.critical("Failed to load fc pickle:")
+        logging.critical(e)

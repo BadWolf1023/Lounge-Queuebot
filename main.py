@@ -524,6 +524,7 @@ def save_data():
     with open("main_pkl", "wb") as f:
         pickle.dump(to_dump, f)
     rating.save_data()
+    fc_commands.save_data()
 
 
 def load_data():
@@ -546,6 +547,7 @@ def load_data():
         logging.critical("Failed to load main pickle:")
         logging.critical(e)
     rating.load_data()
+    fc_commands.load_data()
     print("All data loaded.")
 
 
