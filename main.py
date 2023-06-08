@@ -685,11 +685,22 @@ async def warn_almost_expired_rooms():
 
 @tasks.loop(minutes=1, reconnect=True)
 async def run_routines():
-    await drop_warn()
-    await form_lineups(ladder_type=shared.RT_LADDER)
-    await form_lineups(ladder_type=shared.CT_LADDER)
-    await delete_expired_rooms()
-    await warn_almost_expired_rooms()
+    try:
+        await drop_warn()
+        await form_lineups(ladder_type=shared.RT_LADDER)
+        await form_lineups(ladder_type=shared.CT_LADDER)
+        await delete_expired_rooms()
+        await warn_almost_expired_rooms()
+    except Exception as e:
+        logging.critical("Exception occurred in run_routine loop:")
+        logging.exception(e)
+        try:
+            all_queue_channels = RT_QUEUE_CHANNELS | CT_QUEUE_CHANNELS
+            for channel_id in all_queue_channels:
+                await bot.get_channel(channel_id).send(f"Tell Bad Wolf to check the logs. The following error occurred: {e}")
+        except Exception as f:
+            logging.critical("Exception occurred in run_routine loop queue channel sending:")
+            logging.exception(f)
 
 
 class Voting(discord.ui.View):
