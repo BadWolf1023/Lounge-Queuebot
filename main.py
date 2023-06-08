@@ -176,6 +176,7 @@ class Room:
     async def end(self):
         if self.finished is False:
             await self.change_player_visibility(view=False)
+            await self.get_room_channel().send("The event has ended.")
             self.finished = True
 
     async def change_player_visibility(self, view=True):
