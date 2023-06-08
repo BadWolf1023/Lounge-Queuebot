@@ -6,7 +6,7 @@ import datetime
 MAX_MMR_RANGE = 7000
 MAX_QUEUE_TIME = 60
 LINEUP_SIZE = 12
-SCORE_THRESHOLD = .1
+SCORE_THRESHOLD = 0
 
 
 def get_mmr_min_max(player_list):
