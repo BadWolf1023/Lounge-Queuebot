@@ -32,7 +32,7 @@ class Room:
     ROOM_EXTENSION_TIME = datetime.timedelta(minutes=5)
 
     def __init__(self, players: List[shared.Player], ladder_type: str):
-        self.players = players
+        self.players = list(players)
         self.ladder_type = ladder_type
         self.room_channel_id: int = None
         self.voting_view = None
@@ -42,6 +42,7 @@ class Room:
         self.expiration_warning_sent = False
         self.teams: List[List[shared.Player]] = None
         self.destroyed = False
+        self.host_str = "No one queued as a host."
 
     def get_category_channel(self) -> discord.CategoryChannel | None:
         category_id = RT_QUEUE_CATEGORY if self.ladder_type == shared.RT_LADDER else CT_QUEUE_CATEGORY
@@ -70,7 +71,7 @@ class Room:
                 f"**This channel will be deleted in {int(Room.ROOM_WARN_TIME.seconds / 60)} minutes.** Use slash command `/extend` for a {int(Room.ROOM_EXTENSION_TIME.seconds / 60)} minute extension.")
 
     def make_teams(self):
-        lineup = list(self.players)[:algorithm.LINEUP_SIZE]
+        lineup = self.players[:algorithm.LINEUP_SIZE]
         random.shuffle(lineup)
         step_map = {"FFA": 1, "2v2": 2, "3v3": 3, "4v4": 4, "6v6": 1}
         step = step_map[self.winning_vote]
@@ -78,6 +79,18 @@ class Room:
         for i in range(0, len(lineup), step):
             self.teams.append(lineup[i:i + step])
         self.teams.sort(key=get_team_average_lr, reverse=True)
+
+    def randomize_host(self):
+        hosts = [p for p in self.players[:algorithm.LINEUP_SIZE] if p.can_host]
+        if len(hosts) > 0:
+            random.shuffle(self.hosts)
+            result = "Host order:"
+            for list_num, p in enumerate(hosts, start=1):
+                fc = fc_commands.get_fc(p.discord_id)
+                result += f"\n{list_num}. {p.name}"
+                result += '' if fc is None else f" ({fc})"
+            self.host_str = result
+
 
     async def send_teams_at_start(self):
         header = f"Winner: {self.winning_vote}"
@@ -88,7 +101,7 @@ class Room:
         await self.send_teams(header)
 
     async def send_teams(self, header=""):
-        await self.get_room_channel().send(self.get_teams_str(header=header))
+        await self.get_room_channel().send(self.get_teams_str(header=header) + f"\n\n{self.host_str}")
 
     def get_teams_str(self, header="") -> str:
         results = [] if len(header) == 0 else [header]
@@ -110,6 +123,7 @@ class Room:
         await self.create_channel(category_channel)
         await self.cast_vote()
         self.make_teams()
+        self.randomize_host()
         await self.send_teams_at_start()
 
     async def send_vote_notification(self):
@@ -302,6 +316,9 @@ async def add_player_to_queue(interaction: discord.Interaction, player_name: str
     queue = RT_QUEUE if ladder_type == shared.RT_LADDER else CT_QUEUE
     if player_name.lower() in queue:
         msg = f"{player_name} is already in the {ladder_type.upper()} queue."
+        if queue[player_name.lower()].can_host != can_host:
+            msg = f"{player_name} is {'now' if can_host else 'no longer'} a host."
+            queue[player_name.lower()] = queue[player_name.lower()]._replace(can_host=can_host)
         if send_message:
             await interaction.response.send_message(msg)
         return msg
@@ -350,12 +367,14 @@ async def list_queue(interaction: discord.Interaction, ladder_type: str):
     result = f"{ladder_type.upper()} queue:"
     for index, player in enumerate(queue.values(), 1):
         result += f"\n{index}. {player.name} ({player.lr} LR)"
+        if player.can_host:
+            result += " - host"
     await interaction.response.send_message(result)
 
 
 @bot.tree.command(name="can", description="Join the queue")
 @app_commands.describe(host="Can you host?")
-async def can(interaction: discord.Interaction, host: Literal["Yes", "No"] = "Yes"):
+async def can(interaction: discord.Interaction, host: Literal["No", "Yes"] = "No"):
     can_host = host == "Yes"
     update_player_activity(interaction.user.display_name, interaction.channel.id)
     if interaction.channel_id in RT_QUEUE_CHANNELS:
@@ -674,7 +693,7 @@ async def run_routines():
 
 
 class Voting(discord.ui.View):
-    def __init__(self, players, **kwargs):
+    def __init__(self, players: List[shared.Player], **kwargs):
         self.votes = {"FFA": set(), "2v2": set(), "3v3": set(), "4v4": set(), "6v6": set()}
         self.players: List[shared.Player] = players
         self.voting = True
@@ -696,10 +715,7 @@ class Voting(discord.ui.View):
         return random.choice(winning_votes)
 
     def is_valid_voter(self, player_name: str) -> bool:
-        for player in self.players:
-            if player.name.lower() == player_name.lower():
-                return True
-        return False
+        return any(player.name.lower() == player_name.lower() for player in self.players)
 
     def place_vote(self, player_name: str, vote: str):
         lookup = player_name.lower()

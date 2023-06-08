@@ -14,6 +14,11 @@ def is_fc(fc: str):
     return re.match("^[0-9]{4}-[0-9]{4}-[0-9]{4}(-2)?$", fc.strip()) is not None
 
 
+def get_fc(user_id: int) -> str | None:
+    if user_id in FC_MAP:
+        return FC_MAP[user_id]
+
+
 class FCCog(commands.Cog):
     fc_group = app_commands.Group(name="fc",
                                   description="Show, set, or remove your FC",
@@ -22,7 +27,7 @@ class FCCog(commands.Cog):
     @fc_group.command(name="show", description="Send your FC")
     async def send_fc(self, interaction: discord.Interaction):
         if interaction.user.id in FC_MAP:
-            await interaction.response.send_message(FC_MAP[interaction.user.id])
+            await interaction.response.send_message(get_fc(interaction.user.id))
         else:
             await interaction.response.send_message(f"Use `/fc set` to set your FC.", ephemeral=True)
 
