@@ -26,6 +26,12 @@ finished_on_ready = False
 rooms = []
 
 
+def channel_is_free(channel_id: int):
+    if channel_id is None:
+        return False
+    return all(r.room_channel_id != channel_id for r in rooms)
+
+
 class Room:
     ROOM_EXPIRATION_TIME = datetime.timedelta(minutes=5)
     ROOM_WARN_TIME = datetime.timedelta(minutes=3)
@@ -41,7 +47,7 @@ class Room:
         self.expiration_time = self.start_time + Room.ROOM_EXPIRATION_TIME
         self.expiration_warning_sent = False
         self.teams: List[List[shared.Player]] = None
-        self.destroyed = False
+        self.finished = False
         self.host_str = "No one queued as a host."
 
     def get_category_channel(self) -> discord.CategoryChannel | None:
@@ -120,7 +126,15 @@ class Room:
                 f"Cannot begin event. Admins have not set the category channel for {self.ladder_type.upper()}s.",
                 self.ladder_type)
             return
-        await self.create_channel(category_channel)
+
+        obtained = await self.obtain_channel(category_channel)
+        if not obtained:
+            await send_message_to_all_queue_channels(
+                f"Cannot begin event. There are no available channels to put a lineup in.",
+                self.ladder_type)
+            return
+
+        await self.change_player_visibility(view=True)
         await self.cast_vote()
         self.make_teams()
         self.randomize_host()
@@ -138,29 +152,32 @@ class Room:
         await self.voting_view.wait()
         self.winning_vote = self.voting_view.get_winner()
 
-    async def create_channel(self, category_channel: discord.CategoryChannel):
-        created_channel_name = "room"
+    async def obtain_channel(self, category_channel: discord.CategoryChannel):
+        for channel in category_channel.text_channels:
+            if channel_is_free(channel.id):
+                self.room_channel_id = channel.id
+                break
+        return self.room_channel_id is not None
+
+    async def end(self):
+        if self.finished is False:
+            await self.change_player_visibility(view=False)
+            self.finished = True
+
+    async def change_player_visibility(self, view=True):
+        category_channel = bot.get_channel(self.room_channel_id).category
         overwrites = {
             category_channel.guild.default_role: discord.PermissionOverwrite(view_channel=False),
             category_channel.guild.me: discord.PermissionOverwrite(view_channel=True)
         }
-
         for player in self.players:
             discord_member = bot.get_user(player.discord_id)
             if discord_member is not None:
-                overwrites[discord_member] = discord.PermissionOverwrite(view_channel=True)
+                overwrites[discord_member] = discord.PermissionOverwrite(view_channel=view)
 
         final_text_channel_overwrites = category_channel.overwrites.copy()
         overwrites.update(final_text_channel_overwrites)
-        room_channel = await category_channel.create_text_channel(name=created_channel_name)
-        self.room_channel_id = room_channel.id
-        await room_channel.edit(overwrites=overwrites)
-
-    async def end(self):
-        if self.destroyed is False:
-            if self.room_channel_id is not None:
-                await self.get_room_channel().delete(reason="Event ended")
-            self.destroyed = True
+        await bot.get_channel(self.room_channel_id).edit(overwrites=overwrites)
 
 
 class AdminCog(commands.Cog):
