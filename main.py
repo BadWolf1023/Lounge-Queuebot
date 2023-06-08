@@ -1,3 +1,4 @@
+import asyncio
 import random
 from typing import Literal, Dict, Tuple, List
 import discord
@@ -24,6 +25,7 @@ RT_QUEUE: Dict[str, shared.Player] = {}
 CT_QUEUE: Dict[str, shared.Player] = {}
 finished_on_ready = False
 rooms = []
+voting_views = {}
 
 
 def channel_is_free(channel_id: int):
@@ -42,8 +44,8 @@ class Room:
         self.players = list(players)
         self.ladder_type = ladder_type
         self.room_channel_id: int = None
-        self.voting_view = None
         self.winning_vote = None
+        self.votes = {}
         self.start_time = datetime.datetime.now()
         self.expiration_time = self.start_time + Room.ROOM_EXPIRATION_TIME
         self.expiration_warning_sent = False
@@ -104,7 +106,6 @@ class Room:
                 result += '' if fc is None else f" ({fc})"
             self.host_str = result
 
-
     async def send_teams_at_start(self):
         header = f"Winner: {self.winning_vote}"
         if self.winning_vote == "6v6":
@@ -144,8 +145,9 @@ class Room:
         await self.change_player_visibility(view=True)
         await self.cast_vote()
 
-    async def after_vote(self):
-        self.winning_vote = self.voting_view.get_winner()
+    async def after_vote(self, winning_vote, votes):
+        self.winning_vote = winning_vote
+        self.votes.update(votes)
         self.make_teams()
         self.randomize_host()
         await self.send_teams_at_start()
@@ -156,9 +158,8 @@ class Room:
 
     async def cast_vote(self):
         await self.send_vote_notification()
-        self.voting_view = Voting(self.players, self.after_vote, timeout=120)
-        message = await self.get_room_channel().send(view=self.voting_view)
-        self.voting_view.message = message
+        voting_view = Voting(self.players, self.after_vote, timeout=120)
+        voting_view.message = await self.get_room_channel().send(view=voting_view)
 
     async def obtain_channel(self, category_channel: discord.CategoryChannel):
         for channel in category_channel.text_channels:
@@ -739,12 +740,24 @@ async def run_routines():
 
 
 class Voting(discord.ui.View):
+
+    VOTE_TIME = datetime.timedelta(minutes=2)
+
     def __init__(self, players: List[shared.Player], on_finish_callback, **kwargs):
         self.votes = {"FFA": set(), "2v2": set(), "3v3": set(), "4v4": set(), "6v6": set()}
         self.players: List[shared.Player] = players
         self.voting = True
-        self.on_finish_callback = on_finish_callback
+        self.__on_finish_callback = on_finish_callback
+        asyncio.create_task(self.vote_timeout())
         super().__init__(**kwargs)
+
+    async def vote_timeout(self):
+        await asyncio.sleep(Voting.VOTE_TIME.seconds)
+        if self.voting:
+            self.voting = False
+            self.stop()
+            await self.__on_finish_callback(self.get_winner(), self.votes)
+
 
     def get_winner(self):
         winning_votes = []
@@ -801,10 +814,8 @@ class Voting(discord.ui.View):
 
         if not self.voting:
             self.stop()
-            await self.on_finish_callback()
+            await self.__on_finish_callback(self.get_winner(), self.votes)
 
-    async def on_timeout(self) -> None:
-        await self.on_finish_callback()
 
     @discord.ui.button(label='FFA - 0', style=discord.ButtonStyle.red)
     async def ffa(self, interaction: discord.Interaction, button: discord.ui.Button):
