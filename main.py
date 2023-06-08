@@ -143,6 +143,9 @@ class Room:
 
         await self.change_player_visibility(view=True)
         await self.cast_vote()
+
+    async def after_vote(self):
+        self.winning_vote = self.voting_view.get_winner()
         self.make_teams()
         self.randomize_host()
         await self.send_teams_at_start()
@@ -153,11 +156,9 @@ class Room:
 
     async def cast_vote(self):
         await self.send_vote_notification()
-        self.voting_view = Voting(self.players, timeout=120)
+        self.voting_view = Voting(self.players, self.after_vote, timeout=120)
         message = await self.get_room_channel().send(view=self.voting_view)
         self.voting_view.message = message
-        await self.voting_view.wait()
-        self.winning_vote = self.voting_view.get_winner()
 
     async def obtain_channel(self, category_channel: discord.CategoryChannel):
         for channel in category_channel.text_channels:
@@ -738,10 +739,11 @@ async def run_routines():
 
 
 class Voting(discord.ui.View):
-    def __init__(self, players: List[shared.Player], **kwargs):
+    def __init__(self, players: List[shared.Player], on_finish_callback, **kwargs):
         self.votes = {"FFA": set(), "2v2": set(), "3v3": set(), "4v4": set(), "6v6": set()}
         self.players: List[shared.Player] = players
         self.voting = True
+        self.on_finish_callback = on_finish_callback
         super().__init__(**kwargs)
 
     def get_winner(self):
@@ -799,6 +801,10 @@ class Voting(discord.ui.View):
 
         if not self.voting:
             self.stop()
+            await self.on_finish_callback()
+
+    async def on_timeout(self) -> None:
+        await self.on_finish_callback()
 
     @discord.ui.button(label='FFA - 0', style=discord.ButtonStyle.red)
     async def ffa(self, interaction: discord.Interaction, button: discord.ui.Button):
