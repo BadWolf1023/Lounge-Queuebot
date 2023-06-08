@@ -684,15 +684,19 @@ async def form_lineups(ladder_type: str):
 
 
 async def delete_expired_rooms():
+    # This function is intentionally written this way to avoid race conditions with other asynchronous code
+    to_end = []
     index_removal = []
     for room_index, room in enumerate(rooms):
         if room.is_expired():
-            await room.end()
+            to_end.append(room)
             index_removal.append(room_index)
 
     for index in index_removal[::-1]:
         rooms.pop(index)
-
+        
+    for r in to_end:
+        await r.end()
 
 async def warn_almost_expired_rooms():
     for room in rooms:
