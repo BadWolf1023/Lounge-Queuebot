@@ -25,8 +25,7 @@ RT_QUEUE: Dict[str, shared.Player] = {}
 CT_QUEUE: Dict[str, shared.Player] = {}
 finished_on_ready = False
 rooms = []
-voting_views = {}
-
+to_restart = []
 
 def channel_is_free(channel_id: int):
     if channel_id is None:
@@ -52,6 +51,10 @@ class Room:
         self.teams: List[List[shared.Player]] = None
         self.finished = False
         self.host_str = "No one queued as a host."
+
+        #Used for restarting the bot
+        self.changed_visibility = False
+        self.finished_start = False
 
     def get_category_channel(self) -> discord.CategoryChannel | None:
         category_id = RT_QUEUE_CATEGORY if self.ladder_type == shared.RT_LADDER else CT_QUEUE_CATEGORY
@@ -143,6 +146,7 @@ class Room:
             return
 
         await self.change_player_visibility(view=True)
+        self.changed_visibility = True
         await self.cast_vote()
 
     async def after_vote(self, winning_vote, votes):
@@ -151,6 +155,7 @@ class Room:
         self.make_teams()
         self.randomize_host()
         await self.send_teams_at_start()
+        self.finished_start = True
 
     async def send_vote_notification(self):
         await self.get_room_channel().send(
@@ -325,12 +330,12 @@ async def on_ready():
 
     if not finished_on_ready:
         await setup(bot)
-        load_data()
         try:
             synced = await bot.tree.sync()
             print(f"Synced {len(synced)} commands: {synced}")
             pull_mmr.start()
             run_routines.start()
+            restart_rooms()
         except Exception as e:
             print(e)
 
@@ -574,11 +579,27 @@ def save_data():
                "RT_QUEUE": RT_QUEUE,
                "CT_QUEUE": CT_QUEUE,
                "RT_QUEUE_CATEGORY": RT_QUEUE_CATEGORY,
-               "CT_QUEUE_CATEGORY": CT_QUEUE_CATEGORY}
+               "CT_QUEUE_CATEGORY": CT_QUEUE_CATEGORY,
+               "rooms": rooms}
     with open("main_pkl", "wb") as f:
         pickle.dump(to_dump, f)
     rating.save_data()
     fc_commands.save_data()
+
+def restart_rooms():
+    for room in to_restart:
+        print(room)
+        if not room.finished_start:
+            if not room.changed_visibility:
+                asyncio.create_task(room.begin_event())
+            else:
+                asyncio.create_task(room.cast_vote())
+    to_restart.clear()
+
+def add_rooms_restart():
+    for room in rooms:
+        if not room.finished_start:
+            to_restart.append(room)
 
 
 def load_data():
@@ -597,6 +618,9 @@ def load_data():
             RT_QUEUE_CATEGORY = to_load["RT_QUEUE_CATEGORY"]
             global CT_QUEUE_CATEGORY
             CT_QUEUE_CATEGORY = to_load["CT_QUEUE_CATEGORY"]
+            rooms.clear()
+            rooms.extend(to_load["rooms"])
+            add_rooms_restart()
     except Exception as e:
         logging.critical("Failed to load main pickle:")
         logging.critical(e)
