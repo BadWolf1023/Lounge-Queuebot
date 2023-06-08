@@ -83,7 +83,7 @@ class Room:
     def randomize_host(self):
         hosts = [p for p in self.players[:algorithm.LINEUP_SIZE] if p.can_host]
         if len(hosts) > 0:
-            random.shuffle(self.hosts)
+            random.shuffle(hosts)
             result = "Host order:"
             for list_num, p in enumerate(hosts, start=1):
                 fc = fc_commands.get_fc(p.discord_id)
