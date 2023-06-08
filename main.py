@@ -26,10 +26,17 @@ finished_on_ready = False
 rooms = []
 
 
+def channel_is_free(channel_id: int):
+    if channel_id is None:
+        return False
+    return all(r.room_channel_id != channel_id for r in rooms)
+
+
 class Room:
     ROOM_EXPIRATION_TIME = datetime.timedelta(minutes=5)
     ROOM_WARN_TIME = datetime.timedelta(minutes=3)
     ROOM_EXTENSION_TIME = datetime.timedelta(minutes=5)
+    MAX_ROOM_ACCESS_TIME = datetime.timedelta(minutes=6)
 
     def __init__(self, players: List[shared.Player], ladder_type: str):
         self.players = list(players)
@@ -41,7 +48,7 @@ class Room:
         self.expiration_time = self.start_time + Room.ROOM_EXPIRATION_TIME
         self.expiration_warning_sent = False
         self.teams: List[List[shared.Player]] = None
-        self.destroyed = False
+        self.finished = False
         self.host_str = "No one queued as a host."
 
     def get_category_channel(self) -> discord.CategoryChannel | None:
@@ -53,6 +60,12 @@ class Room:
 
     def expires_soon(self) -> bool:
         return (datetime.datetime.now() + Room.ROOM_WARN_TIME) >= self.expiration_time
+
+    def extend_goes_past_max_time(self) -> bool:
+        return (self.expiration_time + Room.ROOM_EXTENSION_TIME) > (self.start_time + Room.MAX_ROOM_ACCESS_TIME)
+
+    def minutes_to_expiration(self) -> int:
+        return int((self.expiration_time - datetime.datetime.now()).seconds / 60)
 
     def extend_(self):
         self.expiration_time = self.expiration_time + Room.ROOM_EXTENSION_TIME
@@ -68,7 +81,7 @@ class Room:
         if self.get_room_channel() is not None:
             self.expiration_warning_sent = True
             await self.get_room_channel().send(
-                f"**This channel will be deleted in {int(Room.ROOM_WARN_TIME.seconds / 60)} minutes.** Use slash command `/extend` for a {int(Room.ROOM_EXTENSION_TIME.seconds / 60)} minute extension.")
+                f"**Players will lose access to this channel in {int(Room.ROOM_WARN_TIME.seconds / 60)} minutes.** Use slash command `/extend` for a {int(Room.ROOM_EXTENSION_TIME.seconds / 60)} minute extension.")
 
     def make_teams(self):
         lineup = self.players[:algorithm.LINEUP_SIZE]
@@ -120,7 +133,15 @@ class Room:
                 f"Cannot begin event. Admins have not set the category channel for {self.ladder_type.upper()}s.",
                 self.ladder_type)
             return
-        await self.create_channel(category_channel)
+
+        obtained = await self.obtain_channel(category_channel)
+        if not obtained:
+            await send_message_to_all_queue_channels(
+                f"Cannot begin event. There are no available channels to put a lineup in.",
+                self.ladder_type)
+            return
+
+        await self.change_player_visibility(view=True)
         await self.cast_vote()
         self.make_teams()
         self.randomize_host()
@@ -138,29 +159,32 @@ class Room:
         await self.voting_view.wait()
         self.winning_vote = self.voting_view.get_winner()
 
-    async def create_channel(self, category_channel: discord.CategoryChannel):
-        created_channel_name = "room"
+    async def obtain_channel(self, category_channel: discord.CategoryChannel):
+        for channel in category_channel.text_channels:
+            if channel_is_free(channel.id):
+                self.room_channel_id = channel.id
+                break
+        return self.room_channel_id is not None
+
+    async def end(self):
+        if self.finished is False:
+            await self.change_player_visibility(view=False)
+            self.finished = True
+
+    async def change_player_visibility(self, view=True):
+        category_channel = bot.get_channel(self.room_channel_id).category
         overwrites = {
             category_channel.guild.default_role: discord.PermissionOverwrite(view_channel=False),
             category_channel.guild.me: discord.PermissionOverwrite(view_channel=True)
         }
-
         for player in self.players:
             discord_member = bot.get_user(player.discord_id)
             if discord_member is not None:
-                overwrites[discord_member] = discord.PermissionOverwrite(view_channel=True)
+                overwrites[discord_member] = discord.PermissionOverwrite(view_channel=view)
 
         final_text_channel_overwrites = category_channel.overwrites.copy()
         overwrites.update(final_text_channel_overwrites)
-        room_channel = await category_channel.create_text_channel(name=created_channel_name)
-        self.room_channel_id = room_channel.id
-        await room_channel.edit(overwrites=overwrites)
-
-    async def end(self):
-        if self.destroyed is False:
-            if self.room_channel_id is not None:
-                await self.get_room_channel().delete(reason="Event ended")
-            self.destroyed = True
+        await bot.get_channel(self.room_channel_id).edit(overwrites=overwrites)
 
 
 class AdminCog(commands.Cog):
@@ -409,16 +433,21 @@ async def remove(interaction: discord.Interaction, player: str):
 
 
 @bot.tree.command(name="extend",
-                  description=f"Extend the deletion of the room by {int(Room.ROOM_EXTENSION_TIME.seconds / 60)} minutes")
+                  description=f"Extend channel access for players by {int(Room.ROOM_EXTENSION_TIME.seconds / 60)} minutes")
 async def extend_(interaction: discord.Interaction):
     for room in rooms:
         if room.get_room_channel() is not None and room.room_channel_id == interaction.channel_id:
             if room.expires_soon():
-                room.extend_()
-                await interaction.response.send_message(f"The room deletion time has been extended by 30 minutes.")
+                if room.extend_goes_past_max_time():
+                    await interaction.response.send_message(f"Cannot extend player access. The maximum time players "
+                                                            f"can view this channel has been reached.", ephemeral=True)
+                else:
+                    room.extend_()
+                    await interaction.response.send_message(f"Channel access for players has been extended by "
+                                                            f"{int(Room.ROOM_EXTENSION_TIME.seconds/60)} minutes.")
             else:
-                await interaction.response.send_message(f"This room won't be deleted any time soon, so I am ignoring "
-                                                        f"your extension request.", ephemeral=True)
+                await interaction.response.send_message(f"Players still have access for {room.minutes_to_expiration()}"
+                                                        f" minutes, so your request has been ignored.", ephemeral=True)
             break
     else:
         await interaction.response.send_message(f"This is not a room channel.", ephemeral=True)
@@ -654,6 +683,7 @@ async def form_lineups(ladder_type: str):
 
                 cur_room = Room(best_lineup, ladder_type)
                 rooms.append(cur_room)
+
                 await cur_room.begin_event()
 
             else:
@@ -667,15 +697,19 @@ async def form_lineups(ladder_type: str):
 
 
 async def delete_expired_rooms():
+    # This function is intentionally written this way to avoid race conditions with other asynchronous code
+    to_end = []
     index_removal = []
     for room_index, room in enumerate(rooms):
         if room.is_expired():
-            await room.end()
+            to_end.append(room)
             index_removal.append(room_index)
 
     for index in index_removal[::-1]:
         rooms.pop(index)
 
+    for r in to_end:
+        await r.end()
 
 async def warn_almost_expired_rooms():
     for room in rooms:
