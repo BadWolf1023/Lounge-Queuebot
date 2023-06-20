@@ -1,16 +1,28 @@
 from typing import List
+
+import shared
 from shared import Player
 import datetime
 
 
-MAX_MMR_RANGE = 7000
+MAX_MMR_RANGE = 6000
 MAX_QUEUE_TIME = 60
 LINEUP_SIZE = 12
-SCORE_THRESHOLD = 0
+SCORE_THRESHOLD = 1.2
+
+MAX_MMR = 12000
+MIN_MMR = -1000
+def get_mmr(player: shared.Player):
+    if player.mmr > MAX_MMR:
+        return MAX_MMR
+    elif player.mmr < MIN_MMR:
+        return MIN_MMR
+    else:
+        return player.mmr
 
 
 def get_mmr_min_max(player_list):
-    return min(player_list, key=lambda p: p.mmr).mmr, max(player_list, key=lambda p: p.mmr).mmr
+    return get_mmr(min(player_list, key=get_mmr)), get_mmr(max(player_list, key=get_mmr))
 
 
 def get_mmr_range(player_list):
@@ -26,6 +38,14 @@ def compute_mmr_range_score(mmr_range):
 def average(numbers):
     return sum(numbers) / len(numbers)
 
+def average_mmr(player_list):
+    return average([get_mmr(p) for p in player_list])
+
+def compute_avg_mmr_bonus_score(player_list):
+    avg_mmr = average_mmr(player_list)
+    SCALE_FACTOR = .3
+    return ((avg_mmr - 5000) ** 2) / (10**8) * SCALE_FACTOR
+
 
 def get_minutes(dt: datetime.timedelta) -> int:
     return dt.seconds // 60
@@ -36,9 +56,16 @@ def compute_average_time_in_lineup(player_list: List[Player], time_reference=Non
     return average([get_minutes(time_reference - x.time_queued) for x in player_list])
 
 
+def compute_time_in_lineup_score_VALENCE(player_list: List[Player]):
+    # Calculates the score of a lineup's average queue time according to the following formula:
+    # https://www.desmos.com/calculator/p3anl9d2yr
+    avg_queue_time = compute_average_time_in_lineup(player_list)
+    eq_exp = -1 * (2 * avg_queue_time - 30)
+    return 1 / (1 + 1.05**eq_exp)
+
 def compute_time_in_lineup_score(player_list: List[Player]):
-    # Calculates the average of the player's queue times. Divides by MAX_QUEUE_TIME (to make a ratio)
-    return compute_average_time_in_lineup(player_list) / MAX_QUEUE_TIME
+    # Calculates the score of a lineup's average queue time according to a certain formula
+    return compute_time_in_lineup_score_VALENCE(player_list)
 
 
 def compute_lineup_score(player_list, breakdown=False):
@@ -46,6 +73,7 @@ def compute_lineup_score(player_list, breakdown=False):
 
     mmr_range_score = compute_mmr_range_score(mmr_range)
     lineup_queue_time_score = compute_time_in_lineup_score(player_list)
+    avg_mmr_bonus_score = compute_avg_mmr_bonus_score(player_list)
 
     if mmr_range > MAX_MMR_RANGE:
         mmr_range_score = 0
@@ -58,7 +86,9 @@ def compute_lineup_score(player_list, breakdown=False):
         return total_score, {"MMR Range": mmr_range,
                              "MMR Range Score": mmr_range_score,
                              "Average queue time": compute_average_time_in_lineup(player_list),
-                             "Lineup Queue Time Score": lineup_queue_time_score}
+                             "Lineup Queue Time Score": lineup_queue_time_score,
+                             "Average MMR": average_mmr(player_list),
+                             "Average MMR bonus score": avg_mmr_bonus_score}
     else:
         return total_score
 
