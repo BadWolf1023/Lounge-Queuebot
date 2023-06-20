@@ -50,6 +50,7 @@ class EvenRoomTest(unittest.TestCase):
         self.assertTrue(team_1_correct, f"Team 1 is not correct for 4 players:\nCorrect team 1 and 2 result:\n{team_1_result}\n{team_2_result}\nActual team 1: {team_1}")
         team_2_correct = team_2 == team_1_result or team_2 == team_2_result
         self.assertTrue(team_2_correct, f"Team 2 is not correct for 4 players:\nCorrect team 1 and 2 result:\n{team_1_result}\n{team_2_result}\nActual team 2: {team_2}")
+
     def test_room_even_teams_2(self):
         self.room_1.make_even_teams(self.players_2, 2)
         team_1 = self.room_1.teams[0]
