@@ -131,10 +131,6 @@ class Room:
 
     async def send_teams_at_start(self):
         header = f"Winner: {self.winning_vote}"
-        if self.winning_vote == "6v6":
-            sorted_by_mmrs = sorted(self.players, key=lambda p: p.mmr, reverse=True)
-            header += f"\nFirst team captain: {mention(sorted_by_mmrs[0])}" \
-                      f"\nSecond team captain: {mention(sorted_by_mmrs[1])}"
         await self.send_teams(header)
 
     async def send_teams(self, header=""):
