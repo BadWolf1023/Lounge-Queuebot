@@ -20,6 +20,8 @@ WARN_DROP_TIME = 1000000000
 AUTO_DROP_TIME = 10000000000
 OWNERS = [1110408991839883274]
 
+RUN_UNIT_TESTS = True
+
 
 def split_large_str(to_split: str, max_len=MAX_LEN):
     split_strs = [""]

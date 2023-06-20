@@ -14,6 +14,9 @@ import pickle
 import algorithm
 import fc_commands
 from collections import defaultdict
+import itertools
+import test_rooms
+import unittest
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
@@ -88,14 +91,31 @@ class Room:
             await self.get_room_channel().send(
                 f"**Players will lose access to this channel in {int(Room.ROOM_WARN_TIME.seconds / 60)} minutes.** Use slash command `/extend` for a {int(Room.ROOM_EXTENSION_TIME.seconds / 60)} minute extension.")
 
+    def make_even_teams(self, lineup, num_teams=2):
+        """Brute forces all combinations of teams. Be careful... 12 choose 6 = 954, which is OK"""
+        lineup = set(lineup)
+        self.teams = []
+
+        def difference_of_sums(team):
+            team = set(team)
+            second_team = lineup.difference(team)
+            return abs(sum(algorithm.get_mmr(p1) for p1 in team) - sum(algorithm.get_mmr(p2) for p2 in second_team))
+        most_even_team = min(itertools.combinations(lineup, len(lineup) // num_teams), key=difference_of_sums)
+        self.teams.append(list(most_even_team))
+        self.teams.append(list(lineup.difference(most_even_team)))
+
+
     def make_teams(self):
         lineup = self.players[:algorithm.LINEUP_SIZE]
         random.shuffle(lineup)
         step_map = {"FFA": 1, "2v2": 2, "3v3": 3, "4v4": 4, "6v6": 1}
         step = step_map[self.winning_vote]
         self.teams = []
-        for i in range(0, len(lineup), step):
-            self.teams.append(lineup[i:i + step])
+        if self.winning_vote == "6v6":
+            self.make_even_teams(lineup)
+        else:
+            for i in range(0, len(lineup), step):
+                self.teams.append(lineup[i:i + step])
         self.teams.sort(key=get_team_average_lr, reverse=True)
 
     def randomize_host(self):
@@ -879,4 +899,10 @@ def mention(user: int | shared.Player):
 
 if __name__ == "__main__":
     load_data()
+    if shared.RUN_UNIT_TESTS:
+        test_rooms.set_room(Room)
+        suite = unittest.TestLoader().loadTestsFromModule(test_rooms)
+        # run all tests with verbosity
+        unittest.TextTestRunner(verbosity=2).run(suite)
+
     bot.run(TOKEN, log_level=logging.INFO)
