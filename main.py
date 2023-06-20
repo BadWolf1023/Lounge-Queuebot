@@ -179,7 +179,7 @@ class Room:
 
     async def cast_vote(self):
         await self.send_vote_notification()
-        voting_view = Voting(self.players, self.after_vote, timeout=120)
+        voting_view = Voting(self.players, self.after_vote, timeout=Voting.get_voting_seconds())
         voting_view.message = await self.get_room_channel().send(view=voting_view)
 
     async def obtain_channel(self, category_channel: discord.CategoryChannel):
@@ -781,8 +781,14 @@ async def run_routines():
 
 
 class Voting(discord.ui.View):
+    if shared.TESTING:
+        VOTE_TIME = datetime.timedelta(seconds=30)
+    else:
+        VOTE_TIME = datetime.timedelta(minutes=2)
 
-    VOTE_TIME = datetime.timedelta(minutes=2)
+    @staticmethod
+    def get_voting_seconds():
+        return Voting.VOTE_TIME.seconds
 
     def __init__(self, players: List[shared.Player], on_finish_callback, **kwargs):
         self.votes = {"FFA": set(), "2v2": set(), "3v3": set(), "4v4": set(), "6v6": set()}
@@ -793,7 +799,7 @@ class Voting(discord.ui.View):
         super().__init__(**kwargs)
 
     async def vote_timeout(self):
-        await asyncio.sleep(Voting.VOTE_TIME.seconds)
+        await asyncio.sleep(Voting.get_voting_seconds())
         if self.voting:
             self.voting = False
             self.stop()

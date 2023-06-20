@@ -22,6 +22,8 @@ OWNERS = [1110408991839883274]
 
 RUN_UNIT_TESTS = True
 
+TESTING = False
+
 
 def split_large_str(to_split: str, max_len=MAX_LEN):
     split_strs = [""]
