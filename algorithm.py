@@ -1,8 +1,8 @@
 from typing import List
 
-import player
+import Player
 import shared
-from player import Player
+from Player import Player
 import datetime
 
 

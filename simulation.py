@@ -1,7 +1,7 @@
 # Online Python - IDE, Editor, Compiler, Interpreter
 import random
 
-import player
+import Player
 import shared
 import algorithm
 import rating

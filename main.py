@@ -5,7 +5,7 @@ import discord
 from discord import app_commands, ui
 from discord.ext import commands, tasks
 
-import player
+import Player
 from config import TOKEN
 import simulation
 import shared
@@ -26,8 +26,8 @@ RT_QUEUE_CATEGORY = None
 CT_QUEUE_CATEGORY = None
 RT_QUEUE_CHANNELS = set()
 CT_QUEUE_CHANNELS = set()
-RT_QUEUE: Dict[str, player.Player] = {}
-CT_QUEUE: Dict[str, player.Player] = {}
+RT_QUEUE: Dict[str, Player.Player] = {}
+CT_QUEUE: Dict[str, Player.Player] = {}
 finished_on_ready = False
 rooms = []
 to_restart = []
@@ -37,6 +37,17 @@ def channel_is_free(channel_id: int):
         return False
     return all(r.room_channel_id != channel_id for r in rooms)
 
+def get_queue(ladder_type: str):
+    if ladder_type == shared.RT_LADDER:
+        return RT_QUEUE
+    elif ladder_type == shared.CT_LADDER:
+        return CT_QUEUE
+
+def get_queue_channels(ladder_type: str):
+    if ladder_type == shared.RT_LADDER:
+        return RT_QUEUE_CHANNELS
+    elif ladder_type == shared.CT_LADDER:
+        return CT_QUEUE_CHANNELS
 
 class Room:
     ROOM_EXPIRATION_TIME = datetime.timedelta(minutes=5)
@@ -44,7 +55,7 @@ class Room:
     ROOM_EXTENSION_TIME = datetime.timedelta(minutes=5)
     MAX_ROOM_ACCESS_TIME = datetime.timedelta(minutes=6)
 
-    def __init__(self, players: List[player.Player], ladder_type: str):
+    def __init__(self, players: List[Player.Player], ladder_type: str):
         self.players = list(players)
         self.ladder_type = ladder_type
         self.room_channel_id: int = None
@@ -53,7 +64,7 @@ class Room:
         self.start_time = datetime.datetime.now()
         self.expiration_time = self.start_time + Room.ROOM_EXPIRATION_TIME
         self.expiration_warning_sent = False
-        self.teams: List[List[player.Player]] = None
+        self.teams: List[List[Player.Player]] = None
         self.finished = False
         self.host_str = "No one queued as a host."
 
@@ -266,10 +277,8 @@ class AdminCog(commands.Cog):
         elif channel.id in CT_QUEUE_CHANNELS:
             await interaction.response.send_message(f"{channel.mention} is already being monitored for CTs")
         else:
-            if rt_or_ct == shared.RT_LADDER:
-                RT_QUEUE_CHANNELS.add(channel.id)
-            else:
-                CT_QUEUE_CHANNELS.add(channel.id)
+            queue_channels = get_queue(rt_or_ct)
+            queue_channels.add(channel.id)
             await interaction.response.send_message(
                 f"Players who queue in {channel.mention} will now be added to the "
                 f"{rt_or_ct} queue.")
@@ -367,12 +376,22 @@ async def on_ready():
 async def add_player_to_queue(interaction: discord.Interaction, player_name: str, can_host: bool, ladder_type: str, friends: List[discord.Member]=[], send_message=True):
     queue = RT_QUEUE if ladder_type == shared.RT_LADDER else CT_QUEUE
     if player_name.lower() in queue:
+        player = queue[player_name.lower()]
         msg = f"{player_name} is already in the {ladder_type.upper()} queue."
-        if queue[player_name.lower()].can_host != can_host:
+        if player.can_host != can_host:
             msg = f"{player_name} is {'now' if can_host else 'no longer'} a host."
-            queue[player_name.lower()] = queue[player_name.lower()]._replace(can_host=can_host)
+            player.can_host = can_host
+
+        if len(friends) > 0:
+            if player.can_add_n_friends(len(friends)):
+                #send modal
+                pass
+            else:
+                #can't add friends
+                pass
         if send_message:
             await interaction.response.send_message(msg)
+
         return msg
 
     player_rating = rating.get_player_rating(player_name, ladder_type)
@@ -383,7 +402,7 @@ async def add_player_to_queue(interaction: discord.Interaction, player_name: str
         return msg
 
     cur_time = datetime.datetime.now()
-    queue[player_name.lower()] = player.Player(name=player_name,
+    queue[player_name.lower()] = Player.Player(name=player_name,
                                                mmr=player_rating[0],
                                                lr=player_rating[1],
                                                time_queued=cur_time,
@@ -428,6 +447,7 @@ async def list_queue(interaction: discord.Interaction, ladder_type: str):
 @app_commands.describe(host="Can you host?",
                        friend_1="Playing with a friend?",
                        friend_2="Playing with another friend?")
+@app_commands.checks.cooldown(rate=1, per=15.0, key=lambda x: x.author.id)
 async def can(interaction: discord.Interaction,
               host: Literal["No", "Yes"] = "No",
               friend_1: Optional[discord.Member] = None,
@@ -685,7 +705,8 @@ def update_queued_player_ratings(ladder_type: str):
     for player in queue:
         player_rating = rating.get_player_rating(player, ladder_type)
         if player_rating is not None:
-            queue[player] = queue[player]._replace(mmr=player_rating[0], lr=player_rating[1])
+            queue[player].mmr = player_rating[0]
+            queue[player].lr = player_rating[1]
 
 
 @tasks.loop(minutes=30, reconnect=True)
@@ -697,7 +718,7 @@ async def pull_mmr():
     logging.info(f"Pulled mmr")
 
 
-def remove_all_players(players: List[player.Player], ladder_type: str):
+def remove_all_players(players: List[Player.Player], ladder_type: str):
     queue = RT_QUEUE if ladder_type == shared.RT_LADDER else CT_QUEUE
     for player in players:
         if player.name.lower() in queue:
@@ -794,6 +815,82 @@ async def run_routines():
             logging.critical("Exception occurred in run_routine loop queue channel sending:")
             logging.exception(f)
 
+class QueueWithFriend(discord.ui.View):
+    RESPONSE_TIMEOUT = datetime.timedelta(minutes=5)
+    @staticmethod
+    def get_response_timeout_seconds():
+        return QueueWithFriend.RESPONSE_TIMEOUT.seconds
+
+    def __init__(self, me: Player.Player, friend: Player.Player, ladder_type: str, on_finish_callback, **kwargs):
+        self.me = me
+        self.friend = friend
+        self.responded = False
+        asyncio.create_task(self.response_timeout())
+        super().__init__(**kwargs)
+
+    def remove_me_from_friends(self):
+        pass
+
+
+    @discord.ui.button(label='Yes', style=discord.ButtonStyle.green)
+    async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.yes_button(interaction, button, "FFA")
+
+    @discord.ui.button(label='No', style=discord.ButtonStyle.red)
+    async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self.no_button(interaction, button, "FFA")
+
+    async def response_timeout(self):
+        await asyncio.sleep(QueueWithFriend.get_response_timeout_seconds())
+        if not self.responded:
+            self.responded = True
+            self.stop()
+            # TODO: Remove player from original player's friends
+
+
+
+    def is_valid_voter(self, player_name: str) -> bool:
+        return any(player.name.lower() == player_name.lower() for player in self.players)
+
+    def place_vote(self, player_name: str, vote: str):
+        lookup = player_name.lower()
+        for voters in self.votes.values():
+            if lookup in voters:
+                voters.remove(lookup)
+        self.votes[vote].add(lookup)
+
+    def update_labels(self):
+        for vote_option, votes in self.votes.items():
+            for child in self.children:
+                if child.label.startswith(vote_option):
+                    child.label = f"{vote_option} - {len(votes)}"
+                    break
+
+    def has_winner(self):
+        for votes in self.votes.values():
+            if len(votes) >= int((algorithm.LINEUP_SIZE + 1) / 2):  # if the majority voted for an option
+                return True
+        return False
+
+    async def vote_button(self, interaction: discord.Interaction, button: discord.ui.Button, original_label: str):
+        if not self.voting:
+            return
+
+        if not self.is_valid_voter(interaction.user.display_name):
+            await interaction.response.defer()
+            return
+
+        self.place_vote(interaction.user.nick, original_label)
+        self.update_labels()
+        if self.has_winner():
+            self.voting = False
+        await interaction.message.edit(view=self)
+        await interaction.response.defer()
+
+        if not self.voting:
+            self.stop()
+            await self.__on_finish_callback(self.get_winner(), self.votes)
+
 
 class Voting(discord.ui.View):
     if shared.TESTING:
@@ -805,9 +902,9 @@ class Voting(discord.ui.View):
     def get_voting_seconds():
         return Voting.VOTE_TIME.seconds
 
-    def __init__(self, players: List[player.Player], on_finish_callback, **kwargs):
+    def __init__(self, players: List[Player.Player], on_finish_callback, **kwargs):
         self.votes = {"FFA": set(), "2v2": set(), "3v3": set(), "4v4": set(), "6v6": set()}
-        self.players: List[player.Player] = players
+        self.players: List[Player.Player] = players
         self.voting = True
         self.__on_finish_callback = on_finish_callback
         asyncio.create_task(self.vote_timeout())
@@ -900,16 +997,16 @@ class Voting(discord.ui.View):
         await self.vote_button(interaction, button, "6v6")
 
 
-def get_team_average_lr(team: List[player.Player]):
+def get_team_average_lr(team: List[Player.Player]):
     return int(sum(p.lr for p in team) / len(team))
 
 
-def get_team_average_mmr(team: List[player.Player]):
+def get_team_average_mmr(team: List[Player.Player]):
     return int(sum(p.mmr for p in team) / len(team))
 
 
-def mention(user: int | player.Player):
-    user_id = user.discord_id if isinstance(user, player.Player) else user
+def mention(user: int | Player.Player):
+    user_id = user.discord_id if isinstance(user, Player.Player) else user
     discord_member = bot.get_user(user_id)
     return f"<@{user_id}>" if discord_member is None else discord_member.mention
 

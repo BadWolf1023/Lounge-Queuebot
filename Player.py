@@ -29,6 +29,7 @@ class Player:
         self.discord_id = discord_id
         self.last_active = last_active
         self._friends = []
+        self._parent = None
 
     def update_active_time(self):
         self.last_active = datetime.datetime.now()
@@ -41,7 +42,16 @@ class Player:
     def remove_friend(self, friend: 'Player'):
         self._friends = [p for p in self._friends if p.disord_id != friend.discord_id]
 
-    def get_low_mmr
+    def total_players(self):
+        return 1 + len(self._friends)
+
+    def get_friends(self):
+        return self._friends
+
+    def can_add_n_friends(self, number_to_add: int) -> bool:
+        return len(self._friends) + number_to_add <= Player.FRIEND_LIMIT
+
+
 
 
 
