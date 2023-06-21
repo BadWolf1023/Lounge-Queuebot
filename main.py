@@ -347,6 +347,8 @@ async def on_ready():
 
     if not finished_on_ready:
         await setup(bot)
+        if not shared.TESTING:
+            bot.tree.remove_command("add")
         try:
             synced = await bot.tree.sync()
             print(f"Synced {len(synced)} commands: {synced}")
