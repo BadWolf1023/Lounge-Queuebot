@@ -438,7 +438,6 @@ async def list_queue(interaction: discord.Interaction, ladder_type: str):
 
 @bot.tree.command(name="can", description="Join the queue")
 @app_commands.describe(host="Can you host?")
-@app_commands.checks.cooldown(rate=1, per=15.0, key=lambda x: x.author.id)
 async def can(interaction: discord.Interaction,
               host: Literal["No", "Yes"] = "No"):
     can_host = host == "Yes"
