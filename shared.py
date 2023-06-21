@@ -1,17 +1,4 @@
-import datetime
-import typing
 import aiohttp
-
-Player = typing.NamedTuple('Player',
-                           name=str,
-                           mmr=int,
-                           lr=int,
-                           time_queued=datetime.datetime,
-                           can_host=bool,
-                           drop_warned=bool,
-                           queue_channel_id=int,
-                           discord_id=int,
-                           last_active=datetime.datetime)
 
 MAX_LEN = 2000
 RT_LADDER = "rt"

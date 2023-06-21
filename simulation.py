@@ -1,5 +1,7 @@
 # Online Python - IDE, Editor, Compiler, Interpreter
 import random
+
+import player
 import shared
 import algorithm
 import rating
@@ -68,10 +70,10 @@ def get_mmrs(player_list, ladder_type: str):
             print(f"Could not find a {ladder_type} rating for {player_name}")
         else:
             min_queued = random.randrange(0, algorithm.MAX_QUEUE_TIME, 1)
-            new_player_list.append(shared.Player(player_name,
+            new_player_list.append(player.Player(player_name,
                                                  player_rating[0],
                                                  player_rating[1],
-                                                 cur_time-datetime.timedelta(minutes=min_queued),
+                                                 cur_time - datetime.timedelta(minutes=min_queued),
                                                  False,
                                                  False,
                                                  0,
@@ -106,14 +108,14 @@ def get_best_lineups_str(best_lineups, ladder_type: str, header=True):
     return text_str + "\n-------------------------------------------------------------------------------\n"
 
 
-def get_player_str(player: shared.Player, time_reference=None) -> str:
+def get_player_str(player: player.Player, time_reference=None) -> str:
     time_reference = datetime.datetime.now() if time_reference is None else time_reference
     player_mmr_str = f"{player.mmr} MMR"
     return f"{player.name:<15} | {player_mmr_str:>9} | {algorithm.get_minutes(time_reference-player.time_queued):<3}" \
            f" minutes queued"
 
 
-def get_player_data_str(players: List[shared.Player], ladder_type: str):
+def get_player_data_str(players: List[player.Player], ladder_type: str):
     text_str = f"{ladder_type.upper()} Data:"
     cur_time = datetime.datetime.now()
     for player in sorted(players, key=lambda z: z.mmr, reverse=True):
