@@ -1,13 +1,12 @@
 import datetime
 import typing
+import discord
 
-
-class TooManyFriends(Exception):
+class TooManyPlayers(Exception):
     pass
 
 
 class Player:
-    FRIEND_LIMIT = 2
 
     def __init__(self,
                  name: str,
@@ -28,30 +27,54 @@ class Player:
         self.queue_channel_id = queue_channel_id
         self.discord_id = discord_id
         self.last_active = last_active
-        self._friends = []
-        self._parent = None
 
     def update_active_time(self):
         self.last_active = datetime.datetime.now()
 
-    def add_friend(self, friend: 'Player'):
-        if len(self._friends) >= Player.FRIEND_LIMIT:
-            raise TooManyFriends()
-        self._friends.append(friend)
+    def get_queue_key(self):
+        return self.name.lower()
 
-    def remove_friend(self, friend: 'Player'):
-        self._friends = [p for p in self._friends if p.disord_id != friend.discord_id]
+    @staticmethod
+    def discord_user_get_queue_key(user: discord.User):
+        return user.display_name.lower()
+
+    @staticmethod
+    def get_queue_key_from_player_name(name: str, queue):
+        name = name.lower()
+        for queued in queue.values():
+            if isinstance(queued, Group):
+                for player in queued.get_players():
+                    if player.name.lower() == name:
+                        return player.get_queue_key()
+            elif isinstance(queued, Player):
+                if player.name.lower() == name:
+                    return player.get_queue_key()
+
+
+
+class Group:
+    MAX_PLAYERS = 2
+    GROUP_ID = 1
+
+    def __init__(self, owner: Player):
+        self._group = [owner]
+        self.group_id = Group.GROUP_ID
+        Group.GROUP_ID += 1
+
+    def add_to_group(self, player: Player):
+        if len(self._group) >= Group.MAX_PLAYERS:
+            raise TooManyPlayers()
+        self._group.append(player)
+
+    def remove_from_group(self, player: Player):
+        in_group = any(p.disord_id == player.discord_id for p in self._group)
+        self._group = [p for p in self._group if p.disord_id != player.discord_id]
+        return in_group
 
     def total_players(self):
-        return 1 + len(self._friends)
+        return len(self._group)
 
-    def get_friends(self):
-        return self._friends
-
-    def can_add_n_friends(self, number_to_add: int) -> bool:
-        return len(self._friends) + number_to_add <= Player.FRIEND_LIMIT
-
-
-
+    def get_players(self):
+        return self._group
 
 
