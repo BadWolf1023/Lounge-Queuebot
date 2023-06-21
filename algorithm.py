@@ -13,7 +13,7 @@ SCORE_THRESHOLD = 1.2
 
 MAX_MMR = 12000
 MIN_MMR = -1000
-def get_mmr(player: player.Player):
+def get_mmr(player: Player.Player):
     if player.mmr > MAX_MMR:
         return MAX_MMR
     elif player.mmr < MIN_MMR:

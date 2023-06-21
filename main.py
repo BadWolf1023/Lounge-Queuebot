@@ -333,7 +333,7 @@ class TestingCog(commands.Cog):
         results = []
         for player in player_names:
             update_player_activity(player.strip(), interaction.channel.id)
-            result = await add_player_to_queue(interaction, player.strip(), False, ladder, [], send_message=False)
+            result = await add_player_to_queue(interaction, player.strip(), False, ladder, send_message=False)
             results.append(result)
         await send_queue_data_file(interaction, results, "results.txt")
 
@@ -373,7 +373,7 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
 
 
-async def add_player_to_queue(interaction: discord.Interaction, player_name: str, can_host: bool, ladder_type: str, friends: List[discord.Member]=[], send_message=True):
+async def add_player_to_queue(interaction: discord.Interaction, player_name: str, can_host: bool, ladder_type: str, send_message=True):
     queue = RT_QUEUE if ladder_type == shared.RT_LADDER else CT_QUEUE
     if player_name.lower() in queue:
         player = queue[player_name.lower()]
@@ -382,13 +382,6 @@ async def add_player_to_queue(interaction: discord.Interaction, player_name: str
             msg = f"{player_name} is {'now' if can_host else 'no longer'} a host."
             player.can_host = can_host
 
-        if len(friends) > 0:
-            if player.can_add_n_friends(len(friends)):
-                #send modal
-                pass
-            else:
-                #can't add friends
-                pass
         if send_message:
             await interaction.response.send_message(msg)
 
@@ -444,26 +437,17 @@ async def list_queue(interaction: discord.Interaction, ladder_type: str):
 
 
 @bot.tree.command(name="can", description="Join the queue")
-@app_commands.describe(host="Can you host?",
-                       friend_1="Playing with a friend?",
-                       friend_2="Playing with another friend?")
+@app_commands.describe(host="Can you host?")
 @app_commands.checks.cooldown(rate=1, per=15.0, key=lambda x: x.author.id)
 async def can(interaction: discord.Interaction,
-              host: Literal["No", "Yes"] = "No",
-              friend_1: Optional[discord.Member] = None,
-              friend_2: Optional[discord.Member] = None):
+              host: Literal["No", "Yes"] = "No"):
     can_host = host == "Yes"
     update_player_activity(interaction.user.display_name, interaction.channel.id)
-    friends = []
-    if friend_1 is not None:
-        friends.append(friend_1)
-    if friend_2 is not None:
-        friends.append(friend_2)
 
     if interaction.channel_id in RT_QUEUE_CHANNELS:
-        await add_player_to_queue(interaction, interaction.user.display_name, can_host, shared.RT_LADDER, friends)
+        await add_player_to_queue(interaction, interaction.user.display_name, can_host, shared.RT_LADDER)
     elif interaction.channel_id in CT_QUEUE_CHANNELS:
-        await add_player_to_queue(interaction, interaction.user.display_name, can_host, shared.CT_LADDER, friends)
+        await add_player_to_queue(interaction, interaction.user.display_name, can_host, shared.CT_LADDER)
     else:
         await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
 
