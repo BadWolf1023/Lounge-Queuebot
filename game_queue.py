@@ -153,7 +153,7 @@ class Group(list):
 
     def reload(self, guild: discord.Guild):
         for player in self:
-            player.reload()
+            player.reload(guild)
         self.remove_empty_players()
 
     def remove_empty_players(self):

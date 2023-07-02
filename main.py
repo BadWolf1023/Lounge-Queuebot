@@ -349,9 +349,8 @@ class TestingCog(commands.Cog):
     @app_commands.command(name="debug-queue", description="Outputs scores of all lineups")
     @app_commands.default_permissions()
     async def debug_queue(self, interaction: discord.Interaction):
-        await interaction.channel.send("This command does not work currently.")
         await interaction.response.defer()
-        queue_datas = simulation.get_lineup_debug_str(list(RT_QUEUE.values()), list(CT_QUEUE.values()))
+        queue_datas = simulation.get_lineup_debug_str(RT_QUEUE, CT_QUEUE)
         await send_queue_data_file(interaction, queue_datas, "queue_data.txt")
 
 
@@ -585,6 +584,8 @@ async def cool_down_exception(interaction: discord.Interaction, error: app_comma
                   description="Input the text from MogiBot's message in #mogilist-lu to computer lineup scores")
 @app_commands.default_permissions()
 async def mllu_text_simulation(interaction: discord.Interaction):
+    await interaction.response.send_message("This command is disabled. A refactor broke it and it is low priority to fix.")
+    return
     await interaction.response.send_modal(MLLUTextModal())
 
 
@@ -660,6 +661,8 @@ async def drop_warn():
 
 
 def save_data():
+    RT_QUEUE.prepare_save()
+    CT_QUEUE.prepare_save()
     to_dump = {"RT_QUEUE_CHANNELS": RT_QUEUE_CHANNELS,
                "CT_QUEUE_CHANNELS": CT_QUEUE_CHANNELS,
                "RT_QUEUE": RT_QUEUE,
@@ -671,6 +674,8 @@ def save_data():
         pickle.dump(to_dump, f)
     rating.save_data()
     fc_commands.save_data()
+    RT_QUEUE.reload(bot.get_guild(shared.LOUNGE_GUILD_ID))
+    CT_QUEUE.reload(bot.get_guild(shared.LOUNGE_GUILD_ID))
 
 
 def restart_rooms():
@@ -740,8 +745,9 @@ def update_queued_player_ratings(ladder_type: str):
     for player in queue.get_players():
         player_rating = rating.get_player_rating(player.get_queue_key(), ladder_type)
         if player_rating is not None:
-            player.mmr = player_rating[0]
-            player.lr = player_rating[1]
+            player.mmr = player_rating[2]
+            player.lr = player_rating[3]
+            print(f"Updated {player.name} MMR to {player.mmr} and LR to {player.lr}")
 
 
 @tasks.loop(minutes=30, reconnect=True)
@@ -756,7 +762,7 @@ async def pull_mmr():
 def remove_all_players(players: List[game_queue.Player], ladder_type: str):
     queue = get_queue(ladder_type)
     for player in players:
-        queue.pop(player.get_queue_key(), None)
+        queue.remove_from_queue(player)
 
 
 async def send_message_to_all_queue_channels(message: str, ladder_type: str):

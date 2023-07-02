@@ -72,8 +72,8 @@ def get_mmrs(player_list, ladder_type: str):
         else:
             min_queued = random.randrange(0, algorithm.MAX_QUEUE_TIME, 1)
             new_player_list.append(game_queue.Player(player_name,
-                                                     player_rating[0],
-                                                     player_rating[1],
+                                                     player_rating[2],
+                                                     player_rating[3],
                                                      cur_time - datetime.timedelta(minutes=min_queued),
                                                      False,
                                                      False,
@@ -116,9 +116,9 @@ def get_player_str(player: game_queue.Player, time_reference=None) -> str:
            f" minutes queued"
 
 
-def get_player_data_str(players: List[game_queue.Player], ladder_type: str):
+def get_player_data_str(queue: game_queue.Queue, ladder_type: str):
     text_str = f"{ladder_type.upper()} Data:"
     cur_time = datetime.datetime.now()
-    for player in sorted(players, key=lambda z: z.mmr, reverse=True):
+    for player in sorted(queue.get_players(), key=lambda z: z.mmr, reverse=True):
         text_str += f"\n{get_player_str(player, cur_time)}"
     return text_str
