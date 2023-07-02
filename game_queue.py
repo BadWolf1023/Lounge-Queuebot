@@ -44,8 +44,9 @@ class Player:
                 return self.discord_member.display_name
         return self._name
 
-    def update_active_time(self):
+    def update_activity(self):
         self.last_active = datetime.datetime.now()
+        self.drop_warned = False
 
     def get_queue_key(self):
         return shared.utf8_to_ascii_mapping_name_fix(self.name)

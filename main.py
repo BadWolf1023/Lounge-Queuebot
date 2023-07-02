@@ -621,16 +621,16 @@ async def run_drop_warn(ladder_type: str):
     channel_ids = RT_QUEUE_CHANNELS if ladder_type == shared.RT_LADDER else CT_QUEUE_CHANNELS
 
     # Drop players who have been warned, are no longer active, and are beyond the drop time
-    to_drop = []
-    for player in queue:
-        if (current_time - queue[player].last_active) >= drop_time and queue[player].drop_warned:
-            to_drop.append(queue[player])
+    to_drop: List[game_queue.Player] = []
+    players = queue.get_players()
+    for player in players:
+        if (current_time - player.last_active) >= drop_time and player.drop_warned:
+            to_drop.append(player)
 
     if len(to_drop) > 0:
         builder_str = f"Removed {', '.join(p.name for p in to_drop)} due to inactivity."
         for player in to_drop:
-            if player.get_queue_key() in queue:
-                queue.pop(player.get_queue_key())
+            queue.remove_from_queue(player)
 
         channels_to_notify: List[discord.TextChannel] = [bot.get_channel(channel_id) for channel_id in channel_ids]
         for channel in channels_to_notify:
@@ -638,17 +638,18 @@ async def run_drop_warn(ladder_type: str):
 
     # Warn players about dropping because they have been inactive
     to_warn: List[game_queue.Player] = []
-    for player in queue:
-        if (current_time - queue[player].last_active) >= warn_time and not queue[player].drop_warned:
-            to_warn.append(queue[player])
+    players = queue.get_players()
+    for player in players:
+        if (current_time - player.last_active) >= warn_time and not player.drop_warned:
+            to_warn.append(player)
     players_to_warn_by_channel = defaultdict(list)
     for player in to_warn:
         player.drop_warned = True
         players_to_warn_by_channel[player.queue_channel_id].append(player)
     for channel_id, players in players_to_warn_by_channel.items():
         channel = bot.get_channel(channel_id)
-        builder_str = f"{', '.join(mention(p) for p in players)} you will be dropped from the queue in" \
-                      f"{shared.AUTO_DROP_TIME - shared.WARN_DROP_TIME} minutes due to inactivity." \
+        builder_str = f"{', '.join(mention(p) for p in players)} you will be dropped from the queue in " \
+                      f"{shared.AUTO_DROP_TIME - shared.WARN_DROP_TIME} minutes due to inactivity. " \
                       f"Please type something in the chat to remain in the queue."
         await channel.send(builder_str)
 
@@ -723,7 +724,7 @@ def update_player_activity(member: discord.Member, channel_id: int):
     partial_player = game_queue.Player.discord_member_to_partial_player(member)
     actual_player = queue.get_player(partial_player)
     if actual_player is not None:
-        actual_player.update_active_time()
+        actual_player.update_activity()
 
 
 @bot.event
