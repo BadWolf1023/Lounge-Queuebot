@@ -2,6 +2,7 @@ import shared
 import datetime
 import pickle
 import logging
+import game_queue
 
 RT_MMR_DATA = {}
 CT_MMR_DATA = {}
@@ -38,10 +39,11 @@ async def pull_mmr_data(ladder_type: str):
 
     mmr_data.clear()
     for player in response['results']:
-        mmr_data[player[PLAYER_NAME_FIELD_NAME].lower()] = (player[PLAYER_NAME_FIELD_NAME],
-                                                            player[PLAYER_DISCORD_ID_FIELD_NAME],
-                                                            player[PLAYER_MMR_FIELD_NAME],
-                                                            player[PLAYER_LR_FIELD_NAME])
+        partial_player = game_queue.Player.name_to_partial_player(player[PLAYER_NAME_FIELD_NAME])
+        mmr_data[partial_player.get_queue_key()] = (player[PLAYER_NAME_FIELD_NAME],
+                                                    player[PLAYER_DISCORD_ID_FIELD_NAME],
+                                                    player[PLAYER_MMR_FIELD_NAME],
+                                                    player[PLAYER_LR_FIELD_NAME])
 
 
 def get_player_rating(player: str | int, ladder_type: str):

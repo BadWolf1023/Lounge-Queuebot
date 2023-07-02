@@ -349,6 +349,7 @@ class TestingCog(commands.Cog):
     @app_commands.command(name="debug-queue", description="Outputs scores of all lineups")
     @app_commands.default_permissions()
     async def debug_queue(self, interaction: discord.Interaction):
+        await interaction.channel.send("This command does not work currently.")
         await interaction.response.defer()
         queue_datas = simulation.get_lineup_debug_str(list(RT_QUEUE.values()), list(CT_QUEUE.values()))
         await send_queue_data_file(interaction, queue_datas, "queue_data.txt")
@@ -732,11 +733,11 @@ async def on_message(message: discord.Message):
 
 def update_queued_player_ratings(ladder_type: str):
     queue = get_queue(ladder_type)
-    for player in queue:
-        player_rating = rating.get_player_rating(player, ladder_type)
+    for player in queue.get_players():
+        player_rating = rating.get_player_rating(player.get_queue_key(), ladder_type)
         if player_rating is not None:
-            queue[player].mmr = player_rating[0]
-            queue[player].lr = player_rating[1]
+            player.mmr = player_rating[0]
+            player.lr = player_rating[1]
 
 
 @tasks.loop(minutes=30, reconnect=True)
@@ -1015,47 +1016,10 @@ def get_team_average_lr(team: List[game_queue.Player]):
 def get_team_average_mmr(team: List[game_queue.Player]):
     return int(sum(p.mmr for p in team) / len(team))
 
-def get_all_players(q):
-    players = []
-    for player_or_group in q:
-        if isinstance(player_or_group, game_queue.Player):
-            players.append(player_or_group)
-        elif isinstance(player_or_group, game_queue.Group):
-            for p in player_or_group.get_players():
-                players.append(p)
-        else:
-            raise Exception(f"Queue contains bad types: {type(player_or_group)}")
-    return players
-
-def get_all_groups(q):
-    return filter(lambda x: isinstance(x, game_queue.Group), q.values())
-
-
 def mention(user: int | game_queue.Player):
     user_id = user.discord_id if isinstance(user, game_queue.Player) else user
     discord_member = bot.get_user(user_id)
     return f"<@{user_id}>" if discord_member is None else discord_member.mention
-
-
-def in_queue_solo(user: str | game_queue.Player, ladder_type: str):
-    queue = get_queue(ladder_type)
-    user_id = user.discord_id if isinstance(user, game_queue.Player) else user
-    for queued in queue:
-        if isinstance(queued, game_queue.Player):
-            if queued.discord_id == user_id:
-                return True
-    return False
-
-
-def in_queue_group(user: int | game_queue.Player, ladder_type: str):
-    queue = get_queue(ladder_type)
-    user_id = user.discord_id if isinstance(user, game_queue.Player) else user
-    for queued in queue:
-        if isinstance(queued, game_queue.Group):
-            for player in queued.get_players():
-                if player.discord_id == user_id:
-                    return True
-    return False
 
 
 if __name__ == "__main__":
