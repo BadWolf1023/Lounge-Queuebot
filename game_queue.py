@@ -216,3 +216,16 @@ class Queue(list):
             if player in group:
                 return group.get(player)
 
+    def get_players_with_group_numbers(self):
+        group_num = 1
+        players = []
+        for group in self:
+            cur_group_num = None
+            if len(group) > 1:
+                cur_group_num = group_num
+                group_num += 1
+            for player in group:
+                players.append((cur_group_num, player))
+        players.sort(key=lambda t: t[1].time_queued)
+        return players
+

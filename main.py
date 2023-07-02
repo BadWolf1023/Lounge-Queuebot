@@ -449,12 +449,14 @@ async def list_queue(interaction: discord.Interaction, ladder_type: str):
     if len(queue) == 0:
         await interaction.response.send_message(f"No players in the {ladder_type.upper()} queue.")
         return
-    # TODO: change iterating through queue below to Player/Group
     result = f"{ladder_type.upper()} queue:"
-    for index, player in enumerate(queue.values(), 1):
-        result += f"\n{index}. {player.name} ({player.lr} LR)"
+    for index, (group_number, player) in enumerate(queue.get_players_with_group_numbers(), 1):
+        result += f"\n{index}. {player.name} ({player.mmr} MMR)"
+        if group_number is not None:
+            result += f" (group #{group_number})"
         if player.can_host:
             result += " - host"
+
     await interaction.response.send_message(result)
 
 
