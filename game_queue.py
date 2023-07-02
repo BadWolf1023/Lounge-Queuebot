@@ -99,7 +99,7 @@ class Player:
 
 
 class Group(list):
-    MAX_PLAYERS = 2
+    MAX_PLAYERS = 12
 
     def __init__(self, iterable):
         if len(iterable) > Group.MAX_PLAYERS:
@@ -164,6 +164,9 @@ class Group(list):
         for j in reversed(to_remove):
             self.pop(j)
 
+    def can_add_player(self):
+        return (len(self) + 1) <= Group.MAX_PLAYERS
+
 
 
 
@@ -212,9 +215,14 @@ class Queue(list):
         return any(player in group for group in self)
 
     def get_player(self, player: Player):
+        group = self.get_group(player)
+        if group is not None:
+            return group.get(player)
+
+    def get_group(self, player: Player):
         for group in self:
             if player in group:
-                return group.get(player)
+                return group
 
     def get_players(self) -> List[Player]:
         players = []
@@ -240,4 +248,5 @@ class Queue(list):
         for group in self:
             total += len(group)
         return total
+
 

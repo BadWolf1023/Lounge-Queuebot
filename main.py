@@ -213,12 +213,17 @@ class Room:
 
     async def end(self):
         if self.finished is False:
-            await self.change_player_visibility(view=False)
-            await self.get_room_channel().send("The event has ended.")
+            if self.get_room_channel() is not None:
+                await self.change_player_visibility(view=False)
+                await self.get_room_channel().send("The event has ended.")
             self.finished = True
 
     async def change_player_visibility(self, view=True):
-        category_channel = bot.get_channel(self.room_channel_id).category
+        room_channel = bot.get_channel(self.room_channel_id)
+        if room_channel is None:
+            print("Room channel was None in 'change_player_visibility'")
+            return
+        category_channel = room_channel.category
         overwrites = {
             category_channel.guild.default_role: discord.PermissionOverwrite(view_channel=False),
             category_channel.guild.me: discord.PermissionOverwrite(view_channel=True)
@@ -532,15 +537,84 @@ async def player_autocomplete(interaction: discord.Interaction, current: str) ->
             ]
 
 
+async def group_join(interaction: discord.Interaction,
+                     requester_partial_player: game_queue.Player,
+                     friend_partial_player: game_queue.Player,
+                     ladder_type: str):
+    queue = get_queue(interaction.channel_id)
+    ladder_type = shared.RT_LADDER if queue is RT_QUEUE else shared.CT_LADDER
+    if queue is None:
+        await interaction.followup.send(f"Queueing is not allowed in this channel.", ephemeral=True)
+        return
+
+    requester_group = queue.get_group(requester_partial_player)
+    friend_group = queue.get_group(friend_partial_player)
+    if requester_group is None:
+        await interaction.followup.send(f"{requester_partial_player.name} is no longer in the {ladder_type.upper()} queue.")
+        return
+    if friend_group is None:
+        await interaction.followup.send(
+            f"{friend_partial_player.name} needs to `/can` to join the {ladder_type.upper()} queue before trying to join a group.")
+        return
+    if requester_group is friend_group:
+        await interaction.followup.send(
+            f"{friend_partial_player.name} is already in {requester_partial_player.name}'s group.")
+        return
+    if not requester_group.can_add_player():
+        await interaction.followup.send(
+            f"{requester_partial_player.name}'s group already has the maximum number of players allowed in a group.")
+        return
+
+    friend = queue.remove_from_queue(friend_partial_player)
+    requester_group.append(friend)
+    await interaction.followup.send(f"{friend.name} has joined {requester_partial_player.name}'s group.")
+
+
+
 players_group = app_commands.Group(name="group",
                                    description="Playing with friends")
+bot.tree.add_command(players_group)
 
 
 @players_group.command(name="add", description="Ask a player to join your group for queueing")
 @app_commands.describe(player="The player to join your group")
+@app_commands.checks.cooldown(rate=3, per=300.0, key=lambda x: x.user.id)
 async def group_add(interaction: discord.Interaction, player: discord.Member):
     queue = get_queue(interaction.channel_id)
-    groups = get_all_groups(queue)
+    ladder_type = shared.RT_LADDER if queue is RT_QUEUE else shared.CT_LADDER
+    if queue is None:
+        await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
+        return
+
+    requester_partial_player = game_queue.Player.discord_member_to_partial_player(interaction.user)
+    friend_partial_player = game_queue.Player.discord_member_to_partial_player(player)
+    requester_group = queue.get_group(requester_partial_player)
+    friend_group = queue.get_group(friend_partial_player)
+    if requester_group is None:
+        await interaction.response.send_message(f"{requester_partial_player.name} is not in the {ladder_type.upper()} queue. Do `/can` to join to queue.")
+        return
+    if friend_group is None:
+        await interaction.response.send_message(
+            f"{friend_partial_player.name} needs to `/can` to join the {ladder_type.upper()} queue first.")
+        return
+    if requester_group is friend_group:
+        await interaction.response.send_message(
+            f"{friend_partial_player.name} is already in {requester_partial_player.name}'s group.")
+        return
+    if not requester_group.can_add_player():
+        await interaction.response.send_message(
+            f"Your group already has the maximum number of players allowed in a group.")
+        return
+
+    group_add_view = QueueWithFriend(requester_partial_player,
+                                     friend_partial_player,
+                                     shared.RT_LADDER if queue is RT_QUEUE else shared.CT_LADDER)
+    group_add_view.message = await interaction.response.send_message(
+        content=f"{friend_partial_player.name}, would you like to join {requester_partial_player.name}'s group?",
+        view=group_add_view)
+
+
+
 
 
 @players_group.command(name="drop",
@@ -841,9 +915,9 @@ async def warn_almost_expired_rooms():
 async def run_routines():
     try:
         await drop_warn()
+        await delete_expired_rooms()
         await form_lineups(ladder_type=shared.RT_LADDER)
         await form_lineups(ladder_type=shared.CT_LADDER)
-        await delete_expired_rooms()
         await warn_almost_expired_rooms()
     except Exception as e:
         logging.critical("Exception occurred in run_routine loop:")
@@ -865,54 +939,48 @@ class QueueWithFriend(discord.ui.View):
     def get_response_timeout_seconds():
         return QueueWithFriend.RESPONSE_TIMEOUT.seconds
 
-    def __init__(self, me: game_queue.Player, friend: game_queue.Player, ladder_type: str, on_finish_callback, **kwargs):
-        self.me = me
-        self.friend = friend
+    def __init__(self,
+                 requester_partial_player: game_queue.Player,
+                 friend_partial_player: game_queue.Player,
+                 ladder_type: str):
+        self.requester_partial = requester_partial_player
+        self.friend_partial = friend_partial_player
+        self.ladder_type = ladder_type
         self.responded = False
-        asyncio.create_task(self.response_timeout())
-        super().__init__(**kwargs)
+        super().__init__(timeout=QueueWithFriend.get_response_timeout_seconds())
 
-    def remove_me_from_friends(self):
-        pass
 
     @discord.ui.button(label='Yes', style=discord.ButtonStyle.green)
     async def yes(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.yes_button(interaction, button, "FFA")
+        await self.response_button(interaction, button, True)
 
     @discord.ui.button(label='No', style=discord.ButtonStyle.red)
     async def no(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self.no_button(interaction, button, "FFA")
+        await self.response_button(interaction, button, False)
 
-    async def response_timeout(self):
-        await asyncio.sleep(QueueWithFriend.get_response_timeout_seconds())
-        if not self.responded:
-            self.responded = True
-            self.stop()
-            # TODO: Remove player from original player's friends
-
-    def is_valid_voter(self, player_key: Any) -> bool:
-        return any(player.get_queue_key() == player_key for player in self.players)
+    def is_joiner(self, member: discord.Member) -> bool:
+        partial_player = game_queue.Player.discord_member_to_partial_player(member)
+        return partial_player.get_queue_key() == self.friend_partial.get_queue_key()
 
 
-    async def vote_button(self, interaction: discord.Interaction, button: discord.ui.Button, original_label: str):
-        if not self.voting:
-            return
-
-        voter_queue_key = game_queue.Player.discord_member_to_partial_player(interaction.user).get_queue_key()
-        if not self.is_valid_voter(voter_queue_key):
-            await interaction.response.defer()
-            return
-
-        self.place_vote(voter_queue_key, original_label)
-        self.update_labels()
-        if self.has_winner():
-            self.voting = False
-        await interaction.message.edit(view=self)
+    async def response_button(self, interaction: discord.Interaction, button: discord.ui.Button, joining: bool):
         await interaction.response.defer()
+        if not self.is_joiner(interaction.user):
+            return
 
-        if not self.voting:
-            self.stop()
-            await self.__on_finish_callback(self.get_winner(), self.votes)
+        for child in self.children:
+            child.disabled = True
+            if child.label == "Yes" and joining == False:
+                child.style = discord.ButtonStyle.grey
+            elif child.label == "No" and joining == True:
+                child.style = discord.ButtonStyle.grey
+
+        self.responded = True
+        self.stop()
+        await interaction.message.edit(view=self)
+
+        if joining:
+            await group_join(interaction, self.requester_partial, self.friend_partial, self.ladder_type)
 
 
 class Voting(discord.ui.View):
@@ -990,6 +1058,8 @@ class Voting(discord.ui.View):
         self.update_labels()
         if self.has_winner():
             self.voting = False
+            for child in self.children:
+                child.disabled = True
         await interaction.message.edit(view=self)
         await interaction.response.defer()
 
