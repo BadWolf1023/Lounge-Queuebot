@@ -2,6 +2,7 @@ import shared
 import datetime
 import pickle
 import logging
+import game_queue
 
 RT_MMR_DATA = {}
 CT_MMR_DATA = {}
@@ -11,6 +12,7 @@ minimum_time_before_pull = datetime.timedelta(minutes=15)
 
 PLAYER_NAME_FIELD_NAME = "player_name"
 PLAYER_ID_FIELD_NAME = "player_id"
+PLAYER_DISCORD_ID_FIELD_NAME = "player_id"
 PLAYER_MMR_FIELD_NAME = "current_mmr"
 PLAYER_LR_FIELD_NAME = "current_lr"
 
@@ -18,7 +20,8 @@ PLAYER_LR_FIELD_NAME = "current_lr"
 async def pull_mmr_data(ladder_type: str):
     global last_pull_time_rt, last_pull_time_ct
     mmr_api_link = f"https://mkwlounge.gg/api/ladderplayer.php?ladder_type={ladder_type}&all&fields=" \
-                   f"{PLAYER_NAME_FIELD_NAME},{PLAYER_ID_FIELD_NAME},{PLAYER_MMR_FIELD_NAME},{PLAYER_LR_FIELD_NAME}"
+                   f"{PLAYER_NAME_FIELD_NAME},{PLAYER_ID_FIELD_NAME},{PLAYER_MMR_FIELD_NAME}," \
+                   f"{PLAYER_LR_FIELD_NAME},{PLAYER_DISCORD_ID_FIELD_NAME}"
     cur_time = datetime.datetime.now()
     last_pull_time = last_pull_time_rt if ladder_type == shared.RT_LADDER else last_pull_time_ct
     if last_pull_time is not None and cur_time < (last_pull_time + minimum_time_before_pull):
@@ -36,15 +39,22 @@ async def pull_mmr_data(ladder_type: str):
 
     mmr_data.clear()
     for player in response['results']:
-        mmr_data[player[PLAYER_NAME_FIELD_NAME].lower()] = (player[PLAYER_MMR_FIELD_NAME], player[PLAYER_LR_FIELD_NAME])
+        partial_player = game_queue.Player.name_to_partial_player(player[PLAYER_NAME_FIELD_NAME])
+        mmr_data[partial_player.get_queue_key()] = (player[PLAYER_NAME_FIELD_NAME],
+                                                    player[PLAYER_DISCORD_ID_FIELD_NAME],
+                                                    player[PLAYER_MMR_FIELD_NAME],
+                                                    player[PLAYER_LR_FIELD_NAME])
 
 
-def get_player_rating(player_name: str, ladder_type: str):
+def get_player_rating(player: str | int, ladder_type: str):
     mmr_data = RT_MMR_DATA if ladder_type == shared.RT_LADDER else CT_MMR_DATA
-    if player_name.lower() in mmr_data:
-        return mmr_data[player_name.lower()]
-    else:
-        return None  # for clarity that we intentionally mean to return None if player is not found
+    lookup = player
+    if isinstance(player, str):
+        return mmr_data.get(lookup, None)
+    elif isinstance(player, int):
+        for data in mmr_data.values():
+            if data[1] == player:
+                return data
 
 
 def save_data():

@@ -1,5 +1,6 @@
 import unittest
-from shared import Player
+from game_queue import Player
+
 Room = None
 
 
@@ -17,7 +18,8 @@ class EvenRoomTest(unittest.TestCase):
                        drop_warned=False,
                        queue_channel_id=0,
                        discord_id=0,
-                       last_active=None)
+                       last_active=None,
+                       discord_member=None)
             )
 
         self.room_1 = Room(self.players_1, "RT")
@@ -34,7 +36,8 @@ class EvenRoomTest(unittest.TestCase):
                        drop_warned=False,
                        queue_channel_id=0,
                        discord_id=0,
-                       last_active=None)
+                       last_active=None,
+                       discord_member=None)
             )
 
         self.room_2 = Room(self.players_2, "RT")

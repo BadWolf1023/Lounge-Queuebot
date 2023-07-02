@@ -1,5 +1,7 @@
 # Online Python - IDE, Editor, Compiler, Interpreter
 import random
+
+import game_queue
 import shared
 import algorithm
 import rating
@@ -12,8 +14,8 @@ def get_lineup_debug_str(rt_queue_data, ct_queue_data):
     rt_player_data_str = get_player_data_str(rt_queue_data, ladder_type=shared.RT_LADDER)
     ct_player_data_str = get_player_data_str(ct_queue_data, ladder_type=shared.CT_LADDER)
 
-    rt_best_lineups = algorithm.get_best_lineup_for_each_player(rt_queue_data)
-    ct_best_lineups = algorithm.get_best_lineup_for_each_player(ct_queue_data)
+    rt_best_lineups = algorithm.get_best_lineup_for_each_group(rt_queue_data)
+    ct_best_lineups = algorithm.get_best_lineup_for_each_group(ct_queue_data)
 
     rt_best_lineup_str = get_best_lineups_str(rt_best_lineups, ladder_type=shared.RT_LADDER)
     ct_best_lineup_str = get_best_lineups_str(ct_best_lineups, ladder_type=shared.CT_LADDER)
@@ -63,20 +65,21 @@ def get_mmrs(player_list, ladder_type: str):
     new_player_list = []
     cur_time = datetime.datetime.now()
     for player_name in player_list:
-        player_rating = rating.get_player_rating(player_name, ladder_type)
+        potential_addition = game_queue.Player.name_to_partial_player(player_name)
+        player_rating = rating.get_player_rating(potential_addition.get_queue_key(), ladder_type)
         if player_rating is None:
             print(f"Could not find a {ladder_type} rating for {player_name}")
         else:
             min_queued = random.randrange(0, algorithm.MAX_QUEUE_TIME, 1)
-            new_player_list.append(shared.Player(player_name,
-                                                 player_rating[0],
-                                                 player_rating[1],
-                                                 cur_time-datetime.timedelta(minutes=min_queued),
-                                                 False,
-                                                 False,
-                                                 0,
-                                                 0,
-                                                 cur_time)
+            new_player_list.append(game_queue.Player(player_name,
+                                                     player_rating[2],
+                                                     player_rating[3],
+                                                     cur_time - datetime.timedelta(minutes=min_queued),
+                                                     False,
+                                                     False,
+                                                     0,
+                                                     0,
+                                                     cur_time)
                                    )
 
     return new_player_list
@@ -106,16 +109,16 @@ def get_best_lineups_str(best_lineups, ladder_type: str, header=True):
     return text_str + "\n-------------------------------------------------------------------------------\n"
 
 
-def get_player_str(player: shared.Player, time_reference=None) -> str:
+def get_player_str(player: game_queue.Player, time_reference=None) -> str:
     time_reference = datetime.datetime.now() if time_reference is None else time_reference
     player_mmr_str = f"{player.mmr} MMR"
     return f"{player.name:<15} | {player_mmr_str:>9} | {algorithm.get_minutes(time_reference-player.time_queued):<3}" \
            f" minutes queued"
 
 
-def get_player_data_str(players: List[shared.Player], ladder_type: str):
+def get_player_data_str(queue: game_queue.Queue, ladder_type: str):
     text_str = f"{ladder_type.upper()} Data:"
     cur_time = datetime.datetime.now()
-    for player in sorted(players, key=lambda z: z.mmr, reverse=True):
+    for player in sorted(queue.get_players(), key=lambda z: z.mmr, reverse=True):
         text_str += f"\n{get_player_str(player, cur_time)}"
     return text_str

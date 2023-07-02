@@ -1,17 +1,5 @@
-import datetime
-import typing
 import aiohttp
-
-Player = typing.NamedTuple('Player',
-                           name=str,
-                           mmr=int,
-                           lr=int,
-                           time_queued=datetime.datetime,
-                           can_host=bool,
-                           drop_warned=bool,
-                           queue_channel_id=int,
-                           discord_id=int,
-                           last_active=datetime.datetime)
+import unidecode
 
 MAX_LEN = 2000
 RT_LADDER = "rt"
@@ -20,9 +8,14 @@ WARN_DROP_TIME = 1000000000
 AUTO_DROP_TIME = 10000000000
 OWNERS = [1110408991839883274]
 
+
 RUN_UNIT_TESTS = True
 
 TESTING = True
+if TESTING:
+    LOUNGE_GUILD_ID = 1112604633454628864
+else:
+    LOUNGE_GUILD_ID = 387347467332485122
 
 
 def split_large_str(to_split: str, max_len=MAX_LEN):
@@ -44,3 +37,11 @@ async def get_json_data(full_url):
                     return js
     except Exception:
         return None
+
+def utf8_to_ascii_mapping_name_fix(name:str):
+    name = unidecode.unidecode(name)
+    fixed_name = ''
+    for char in name:
+        if char.isalnum():
+            fixed_name += char
+    return fixed_name.lower().replace(" ", "")
