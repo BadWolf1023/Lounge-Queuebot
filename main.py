@@ -764,7 +764,6 @@ async def send_message_to_all_queue_channels(message: str, ladder_type: str):
 
 
 async def form_lineups(ladder_type: str):
-    return
     channel_ids = RT_QUEUE_CHANNELS if ladder_type == shared.RT_LADDER else CT_QUEUE_CHANNELS
     channels: List[discord.TextChannel] = [bot.get_channel(channel_id) for channel_id in channel_ids]
     to_edit = []
@@ -774,7 +773,7 @@ async def form_lineups(ladder_type: str):
     queue = get_queue(ladder_type)
     formed_lineup = False
     while True:
-        best_lineups = algorithm.get_best_lineup_for_each_player(list(queue.values()))
+        best_lineups = algorithm.get_best_lineup_for_each_group(queue)
         sorted_by_score = sorted(best_lineups, key=algorithm.compute_lineup_score, reverse=True)
         if len(sorted_by_score) > 0:
             best_lineup = sorted_by_score[0]

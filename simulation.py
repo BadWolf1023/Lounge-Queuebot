@@ -14,8 +14,8 @@ def get_lineup_debug_str(rt_queue_data, ct_queue_data):
     rt_player_data_str = get_player_data_str(rt_queue_data, ladder_type=shared.RT_LADDER)
     ct_player_data_str = get_player_data_str(ct_queue_data, ladder_type=shared.CT_LADDER)
 
-    rt_best_lineups = algorithm.get_best_lineup_for_each_player(rt_queue_data)
-    ct_best_lineups = algorithm.get_best_lineup_for_each_player(ct_queue_data)
+    rt_best_lineups = algorithm.get_best_lineup_for_each_group(rt_queue_data)
+    ct_best_lineups = algorithm.get_best_lineup_for_each_group(ct_queue_data)
 
     rt_best_lineup_str = get_best_lineups_str(rt_best_lineups, ladder_type=shared.RT_LADDER)
     ct_best_lineup_str = get_best_lineups_str(ct_best_lineups, ladder_type=shared.CT_LADDER)

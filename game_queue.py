@@ -222,7 +222,6 @@ class Queue(list):
             players.extend(group)
         return players
 
-
     def get_players_with_group_numbers(self) -> List[Tuple[int | None, Player]]:
         group_num = 1
         players = []
@@ -235,4 +234,10 @@ class Queue(list):
                 players.append((cur_group_num, player))
         players.sort(key=lambda t: t[1].time_queued)
         return players
+
+    def count_players_queued(self):
+        total = 0
+        for group in self:
+            total += len(group)
+        return total
 

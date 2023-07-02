@@ -94,32 +94,35 @@ def compute_lineup_score(player_list, breakdown=False):
 def traverse_down(cur_list, all_list):
     if len(cur_list) == LINEUP_SIZE:
         return cur_list
-    if len(all_list) == 0:
-        return None
 
     best_addition_index = None
     best_addition_score = None
-    for player_index, player in enumerate(all_list):
-        lineup_score = compute_lineup_score(cur_list + [player])
+    for group_index, group in enumerate(all_list):
+        if (len(cur_list) + len(group)) > LINEUP_SIZE:
+            continue
+        lineup_score = compute_lineup_score(cur_list + group)
         if best_addition_score is None or lineup_score > best_addition_score:
-            best_addition_index = player_index
+            best_addition_index = group_index
             best_addition_score = lineup_score
 
     # possible alpha beta pruning opportunity to stop if best addition score made lineup 0 or below acceptable threshold
 
-    new_cur_list = cur_list + [all_list[best_addition_index]]
+    if best_addition_index is None:
+        return None
+
+    new_cur_list = cur_list + all_list[best_addition_index]
     new_all_player_list = all_list[0:best_addition_index] + all_list[best_addition_index + 1:]
     return traverse_down(new_cur_list, new_all_player_list)
 
 
-def get_best_lineup_for_each_player(all_players):
+def get_best_lineup_for_each_group(queue):
     all_possibilities = set()
-    if len(all_players) < LINEUP_SIZE:
+    if queue.count_players_queued() < LINEUP_SIZE:
         return all_possibilities
 
-    for index, player in enumerate(all_players):
-        temp_list = all_players[0:index] + all_players[index + 1:]
-        result = traverse_down([player], temp_list)
+    for index, group in enumerate(queue):
+        temp_list = queue[0:index] + queue[index + 1:]
+        result = traverse_down([p for p in group], temp_list)
         if result is not None:
             all_possibilities.add(frozenset(result))
 
