@@ -608,6 +608,19 @@ async def group_add(interaction: discord.Interaction, player: discord.Member):
                        description="Drop from your group and play alone - does not drop you from the queue")
 async def group_drop(interaction: discord.Interaction):
     queue, ladder_type = get_queue_and_ladder(interaction.channel_id)
+    requester_partial_player = game_queue.Player.discord_member_to_partial_player(interaction.user)
+    requester_group = queue.get_group(requester_partial_player)
+    if requester_group is None:
+        await interaction.response.send_message(
+            f"{requester_partial_player.name} is not in the {ladder_type.upper()} queue. Do `/can` to join to queue.")
+        return
+    if len(requester_group) == 1:
+        await interaction.response.send_message(
+            f"{requester_partial_player.name} is not in a group.")
+        return
+
+    queue.splinter_from_group(requester_partial_player)
+    await interaction.response.send_message(f"{requester_partial_player.name} has left the group.")
 
 
 
@@ -620,20 +633,15 @@ async def list_command(interaction: discord.Interaction):
     await list_queue(interaction, queue, ladder_type)
 
 
-@list_command.error
-async def cool_down_exception(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.CommandOnCooldown):
-        retry_seconds = int(error.retry_after) + 1
-        error_str = f"This command is on cooldown. Try again after {retry_seconds} " \
-                    f"second{'' if retry_seconds == 1 else 's'}."
-        await interaction.response.send_message(error_str, ephemeral=True)
-    else:
-        await interaction.response.send_message(f"Contact Bad Wolf, this error should not have occurred:\n{error}")
-
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
     if isinstance(error, QueueingNotAllowedInChannel):
         await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
+    elif isinstance(error, app_commands.CommandOnCooldown):
+        retry_seconds = int(error.retry_after) + 1
+        error_str = f"This command is on cooldown. Try again after {retry_seconds} " \
+                    f"second{'' if retry_seconds == 1 else 's'}."
+        await interaction.response.send_message(error_str, ephemeral=True)
     else:
         raise error
 

@@ -168,8 +168,6 @@ class Group(list):
         return (len(self) + 1) <= Group.MAX_PLAYERS
 
 
-
-
 class Queue(list):
 
     def add_to_queue(self, player: Player):
@@ -178,7 +176,7 @@ class Queue(list):
     def splinter_from_group(self, player: Player):
         for group in self:
             if player in group:
-                self.append([group.remove(player)])  # Remove player from group and put in their own group
+                self.append(Group([group.remove(player)]))  # Remove player from group and put in their own group
                 break
         self.remove_empty_groups()
 
