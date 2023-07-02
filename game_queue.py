@@ -1,5 +1,5 @@
 import datetime
-from typing import List
+from typing import List, Tuple
 import discord
 import shared
 
@@ -131,13 +131,10 @@ class Group(list):
         super().extend(group)
 
     def remove(self, player: Player):
-        removed = None
-        for p in self:
-            if p.get_queue_key() != player.get_queue_key():
-                removed = p
-                super().remove(p)
-                break
-        return removed
+        found_player = self.get(player)
+        if found_player is not None:
+            super().remove(found_player)
+        return found_player
 
     def get(self, player: Player):
         if player in self:
@@ -181,11 +178,13 @@ class Queue(list):
                 break
         self.remove_empty_groups()
 
-    def remove_from_queue(self, player):
+    def remove_from_queue(self, player: Player):
+        removed = None
         for group in self:
             if player in group:
-                group.remove(player)
+                removed = group.remove(player)
         self.remove_empty_groups()
+        return removed
 
     def player_in_queue(self, player: Player) -> bool:
         """Returns if a given player is in the queue or not"""
@@ -216,7 +215,14 @@ class Queue(list):
             if player in group:
                 return group.get(player)
 
-    def get_players_with_group_numbers(self):
+    def get_players(self) -> List[Player]:
+        players = []
+        for group in self:
+            players.extend(group)
+        return players
+
+
+    def get_players_with_group_numbers(self) -> List[Tuple[int | None, Player]]:
         group_num = 1
         players = []
         for group in self:

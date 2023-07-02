@@ -431,14 +431,14 @@ async def add_player_to_queue(interaction: discord.Interaction, player_name: str
 
 
 async def remove_player_from_queue(interaction: discord.Interaction,
-                                   player_key: Any,
-                                   queue: Dict[str, Union[game_queue.Player, game_queue.Group]],
+                                   player_name: str,
+                                   queue: game_queue.Queue,
                                    reason: str = "dropped"):
     ladder_type = shared.RT_LADDER if queue is RT_QUEUE else shared.CT_LADDER
-    # TODO: change queue.pop below to Player/Group
-    player = queue.pop(player_key, None)
+    partial_player = game_queue.Player.name_to_partial_player(player_name)
+    player = queue.remove_from_queue(partial_player)
     if player is None:
-        await interaction.response.send_message(f"{player_key} is not in the {ladder_type.upper()} queue.")
+        await interaction.response.send_message(f"{player_name} is not in the {ladder_type.upper()} queue.")
     else:
         await interaction.response.send_message(
         f"Removed {player.name} from the {ladder_type.upper()} queue due to: {reason}")
@@ -483,7 +483,7 @@ async def drop(interaction: discord.Interaction):
     if queue is None:
         await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
     else:
-        await remove_player_from_queue(interaction, game_queue.discord_user_get_queue_key(interaction.user), queue)
+        await remove_player_from_queue(interaction, interaction.user.display_name, queue)
 
 
 
@@ -495,10 +495,7 @@ async def remove(interaction: discord.Interaction, player: str):
     queue = get_queue(interaction.channel_id)
     if queue is None:
         return await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
-    player_key = game_queue.get_queue_key_from_player_name(player, queue)
-    if player_key is None:
-        return await interaction.response.send_message(f"Could not find {player_key} in the queue.", ephemeral=True)
-    await remove_player_from_queue(interaction, player_key, queue, reason="Moderator removed")
+    await remove_player_from_queue(interaction, player, queue, reason="Moderator removed")
 
 
 
@@ -526,13 +523,12 @@ async def extend_(interaction: discord.Interaction):
 
 @remove.autocomplete('player')
 async def player_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
-    players_queued = get_queue(interaction.channel_id)
-    if players_queued is None:
+    queue = get_queue(interaction.channel_id)
+    if queue is None:
         return []
-    # TODO: Change to get players and players in groups from queue
-    return [app_commands.Choice(name=players_queued[player_name].name,
-                                value=players_queued[player_name].name)
-            for player_name in players_queued if current.lower() in player_name.lower()
+    return [app_commands.Choice(name=player.name,
+                                value=player.name)
+            for player in queue.get_players() if current.lower() in player.name.lower()
             ]
 
 
