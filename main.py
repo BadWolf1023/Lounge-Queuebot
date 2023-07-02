@@ -341,7 +341,7 @@ class TestingCog(commands.Cog):
         player_names = players.split(",")
         results = []
         for player in player_names:
-            update_player_activity(player.strip(), interaction.channel.id)
+            update_player_activity(player, interaction.channel.id)
             result = await add_player_to_queue(interaction, player.strip(), False, ladder, send_message=False)
             results.append(result)
         await send_queue_data_file(interaction, results, "results.txt")
@@ -401,7 +401,7 @@ async def add_player_to_queue(interaction: discord.Interaction, player_name: str
 
     # Logic for when the player is not in the queue...
     #   Pull their rating and update their name
-    player_rating = rating.get_player_rating(player_name, ladder_type)
+    player_rating = rating.get_player_rating(potential_addition.get_queue_key(), ladder_type)
     if shared.TESTING:
         player_name = player_rating[0] if player_rating is not None else player_name
     else:
@@ -717,11 +717,14 @@ def load_data():
     print("All data loaded.")
 
 
-def update_player_activity(member: discord.Member, channel_id: int):
+def update_player_activity(member: discord.Member | str, channel_id: int):
     queue = get_queue(channel_id)
     if queue is None:
         return
-    partial_player = game_queue.Player.discord_member_to_partial_player(member)
+    if isinstance(member, str):
+        partial_player = game_queue.Player.name_to_partial_player(member)
+    else:
+        partial_player = game_queue.Player.discord_member_to_partial_player(member)
     actual_player = queue.get_player(partial_player)
     if actual_player is not None:
         actual_player.update_activity()

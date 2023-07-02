@@ -65,7 +65,8 @@ def get_mmrs(player_list, ladder_type: str):
     new_player_list = []
     cur_time = datetime.datetime.now()
     for player_name in player_list:
-        player_rating = rating.get_player_rating(player_name, ladder_type)
+        potential_addition = game_queue.Player.name_to_partial_player(player_name)
+        player_rating = rating.get_player_rating(potential_addition.get_queue_key(), ladder_type)
         if player_rating is None:
             print(f"Could not find a {ladder_type} rating for {player_name}")
         else:

@@ -50,7 +50,6 @@ def get_player_rating(player: str | int, ladder_type: str):
     mmr_data = RT_MMR_DATA if ladder_type == shared.RT_LADDER else CT_MMR_DATA
     lookup = player
     if isinstance(player, str):
-        lookup = player.lower()
         return mmr_data.get(lookup, None)
     elif isinstance(player, int):
         for data in mmr_data.values():
