@@ -1,4 +1,5 @@
 import aiohttp
+import unidecode
 
 MAX_LEN = 2000
 RT_LADDER = "rt"
@@ -31,3 +32,11 @@ async def get_json_data(full_url):
                     return js
     except Exception:
         return None
+
+def utf8_to_ascii_mapping_name_fix(name:str):
+    name = unidecode.unidecode(name)
+    fixed_name = ''
+    for char in name:
+        if char.isalnum():
+            fixed_name += char
+    return fixed_name.lower().replace(" ", "")

@@ -1,8 +1,5 @@
 from typing import List
-
-import Player
-import shared
-from Player import Player
+from game_queue import Player
 import datetime
 
 
@@ -13,7 +10,7 @@ SCORE_THRESHOLD = 1.2
 
 MAX_MMR = 12000
 MIN_MMR = -1000
-def get_mmr(player: Player.Player):
+def get_mmr(player: Player):
     if player.mmr > MAX_MMR:
         return MAX_MMR
     elif player.mmr < MIN_MMR:

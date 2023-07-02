@@ -49,7 +49,7 @@ def get_player_rating(player: str | int, ladder_type: str):
     lookup = player
     if isinstance(player, str):
         lookup = player.lower()
-        mmr_data.get(lookup)
+        return mmr_data.get(lookup, None)
     elif isinstance(player, int):
         for data in mmr_data.values():
             if data[1] == player:
