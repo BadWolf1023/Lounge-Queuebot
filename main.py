@@ -39,6 +39,8 @@ def channel_is_free(channel_id: int):
         return False
     return all(r.room_channel_id != channel_id for r in rooms)
 
+class QueueingNotAllowedInChannel(discord.app_commands.AppCommandError):
+    pass
 
 def get_queue(ladder_type: str | int):
     if ladder_type == shared.RT_LADDER:
@@ -49,6 +51,14 @@ def get_queue(ladder_type: str | int):
         return RT_QUEUE
     elif ladder_type in CT_QUEUE_CHANNELS:
         return CT_QUEUE
+
+def get_queue_and_ladder(ladder_type: str | int):
+    queue = get_queue(ladder_type)
+    if queue is None:
+        raise QueueingNotAllowedInChannel("Queueing not allowed in this channel")
+    ladder_type = shared.RT_LADDER if queue is RT_QUEUE else shared.CT_LADDER
+    return queue, ladder_type
+
 
 
 def get_queue_channels(ladder_type: str):
@@ -336,18 +346,14 @@ class TestingCog(commands.Cog):
     @app_commands.describe(players="Specify which players to add to the queue. Seperate player names with a comma.")
     @app_commands.default_permissions()
     async def add_players(self, interaction: discord.Interaction, players: str):
-        if interaction.channel_id not in RT_QUEUE_CHANNELS and interaction.channel_id not in CT_QUEUE_CHANNELS:
-            await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
-            return
-
+        queue, ladder_type = get_queue_and_ladder(interaction.channel_id)
         await interaction.response.defer()
-        ladder = shared.RT_LADDER if interaction.channel_id in RT_QUEUE_CHANNELS else shared.CT_LADDER
 
         player_names = players.split(",")
         results = []
         for player in player_names:
-            update_player_activity(player, interaction.channel.id)
-            result = await add_player_to_queue(interaction, player.strip(), False, ladder, send_message=False)
+            update_player_activity(player, interaction.channel_id)
+            result = await add_player_to_queue(interaction, player.strip(), queue, False, ladder_type, send_message=False)
             results.append(result)
         await send_queue_data_file(interaction, results, "results.txt")
 
@@ -388,9 +394,12 @@ async def on_ready():
     print(f"Logged in as {bot.user}")
 
 
-async def add_player_to_queue(interaction: discord.Interaction, player_name: str, can_host: bool, ladder_type: str,
+async def add_player_to_queue(interaction: discord.Interaction,
+                              player_name: str,
+                              queue: game_queue.Queue,
+                              can_host: bool,
+                              ladder_type: str,
                               send_message=True):
-    queue = get_queue(ladder_type)
     # Logic for if the player is already in the queue:
     potential_addition = game_queue.Player.name_to_partial_player(player_name)
     player = queue.get_player(potential_addition)
@@ -449,8 +458,7 @@ async def remove_player_from_queue(interaction: discord.Interaction,
         f"Removed {player.name} from the {ladder_type.upper()} queue due to: {reason}")
 
 
-async def list_queue(interaction: discord.Interaction, ladder_type: str):
-    queue = get_queue(ladder_type)
+async def list_queue(interaction: discord.Interaction, queue: game_queue.Queue, ladder_type: str):
     if len(queue) == 0:
         await interaction.response.send_message(f"No players in the {ladder_type.upper()} queue.")
         return
@@ -471,24 +479,14 @@ async def can(interaction: discord.Interaction,
               host: Literal["No", "Yes"] = "No"):
     can_host = host == "Yes"
     update_player_activity(interaction.user, interaction.channel.id)
-
-    if interaction.channel_id in RT_QUEUE_CHANNELS:
-        await add_player_to_queue(interaction, interaction.user.display_name, can_host,
-                                  shared.RT_LADDER)
-    elif interaction.channel_id in CT_QUEUE_CHANNELS:
-        await add_player_to_queue(interaction, interaction.user.display_name, can_host,
-                                  shared.CT_LADDER)
-    else:
-        await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
+    queue, ladder_type = get_queue_and_ladder(interaction.channel_id)
+    await add_player_to_queue(interaction, interaction.user.display_name, queue, can_host, ladder_type)
 
 
 @bot.tree.command(name="drop", description="Leave the queue")
 async def drop(interaction: discord.Interaction):
-    queue = get_queue(interaction.channel_id)
-    if queue is None:
-        await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
-    else:
-        await remove_player_from_queue(interaction, interaction.user.display_name, queue)
+    queue, _ = get_queue_and_ladder(interaction.channel_id)
+    await remove_player_from_queue(interaction, interaction.user.display_name, queue)
 
 
 
@@ -497,9 +495,7 @@ async def drop(interaction: discord.Interaction):
 @app_commands.default_permissions()
 async def remove(interaction: discord.Interaction, player: str):
     update_player_activity(interaction.user, interaction.channel.id)
-    queue = get_queue(interaction.channel_id)
-    if queue is None:
-        return await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
+    queue, _ = get_queue_and_ladder(interaction.channel_id)
     await remove_player_from_queue(interaction, player, queue, reason="Moderator removed")
 
 
@@ -541,11 +537,7 @@ async def group_join(interaction: discord.Interaction,
                      requester_partial_player: game_queue.Player,
                      friend_partial_player: game_queue.Player,
                      ladder_type: str):
-    queue = get_queue(interaction.channel_id)
-    ladder_type = shared.RT_LADDER if queue is RT_QUEUE else shared.CT_LADDER
-    if queue is None:
-        await interaction.followup.send(f"Queueing is not allowed in this channel.", ephemeral=True)
-        return
+    queue, ladder_type = get_queue_and_ladder(interaction.channel_id)
 
     requester_group = queue.get_group(requester_partial_player)
     friend_group = queue.get_group(friend_partial_player)
@@ -580,12 +572,7 @@ bot.tree.add_command(players_group)
 @app_commands.describe(player="The player to join your group")
 @app_commands.checks.cooldown(rate=3, per=300.0, key=lambda x: x.user.id)
 async def group_add(interaction: discord.Interaction, player: discord.Member):
-    queue = get_queue(interaction.channel_id)
-    ladder_type = shared.RT_LADDER if queue is RT_QUEUE else shared.CT_LADDER
-    if queue is None:
-        await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
-        return
-
+    queue, ladder_type = get_queue_and_ladder(interaction.channel_id)
     requester_partial_player = game_queue.Player.discord_member_to_partial_player(interaction.user)
     friend_partial_player = game_queue.Player.discord_member_to_partial_player(player)
     requester_group = queue.get_group(requester_partial_player)
@@ -620,27 +607,17 @@ async def group_add(interaction: discord.Interaction, player: discord.Member):
 @players_group.command(name="drop",
                        description="Drop from your group and play alone - does not drop you from the queue")
 async def group_drop(interaction: discord.Interaction):
-    rt_category = bot.get_channel(RT_QUEUE_CATEGORY)
-    ct_category = bot.get_channel(CT_QUEUE_CATEGORY)
+    queue, ladder_type = get_queue_and_ladder(interaction.channel_id)
 
-    rt_category_mention = "Not set" if rt_category is None else rt_category.mention
-    ct_category_mention = "Not set" if ct_category is None else ct_category.mention
 
-    to_send = f"Lineups gathered for RTs will have their rooms created under the following category: {rt_category_mention}\n" + \
-              f"Lineups gathered for CTs will have their rooms created under the following category: {ct_category_mention}"
-    await interaction.response.send_message(to_send)
 
 
 @bot.tree.command(name="list", description="List players in the queue")
 @app_commands.checks.cooldown(rate=1, per=30.0, key=lambda x: x.channel_id)
 async def list_command(interaction: discord.Interaction):
     update_player_activity(interaction.user, interaction.channel.id)
-    if interaction.channel_id in RT_QUEUE_CHANNELS:
-        await list_queue(interaction, shared.RT_LADDER)
-    elif interaction.channel_id in CT_QUEUE_CHANNELS:
-        await list_queue(interaction, shared.CT_LADDER)
-    else:
-        await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
+    queue, ladder_type = get_queue_and_ladder(interaction.channel_id)
+    await list_queue(interaction, queue, ladder_type)
 
 
 @list_command.error
@@ -652,6 +629,13 @@ async def cool_down_exception(interaction: discord.Interaction, error: app_comma
         await interaction.response.send_message(error_str, ephemeral=True)
     else:
         await interaction.response.send_message(f"Contact Bad Wolf, this error should not have occurred:\n{error}")
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError) -> None:
+    if isinstance(error, QueueingNotAllowedInChannel):
+        await interaction.response.send_message(f"Queueing is not allowed in this channel.", ephemeral=True)
+    else:
+        raise error
 
 
 @bot.tree.command(name="mllu-text-simulation",
