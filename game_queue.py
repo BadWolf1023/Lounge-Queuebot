@@ -125,7 +125,7 @@ class Group(list):
         group.clear()
 
     def extend(self, group: 'Group'):
-        if not isinstance(group, Group):
+        if not isinstance(group, list):
             raise TypeError(f"Type Group cannot extend type given: {type(group)}")
         if (len(self) + len(group)) > Group.MAX_PLAYERS:
             raise TooManyPlayers()

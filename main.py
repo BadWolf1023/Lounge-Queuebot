@@ -375,8 +375,8 @@ async def setup(bot_: commands.Bot) -> None:
 async def on_ready():
     global finished_on_ready
     print("Logging in...")
-
     if not finished_on_ready:
+        load_data()
         await setup(bot)
         if not shared.TESTING:
             bot.tree.remove_command("add")
@@ -746,7 +746,6 @@ def save_data():
 
 def restart_rooms():
     for room in to_restart:
-        print(room)
         if not room.finished_start:
             if not room.changed_visibility:
                 asyncio.create_task(room.begin_event())
@@ -771,8 +770,10 @@ def load_data():
             CT_QUEUE_CHANNELS.update(to_load["CT_QUEUE_CHANNELS"])
             RT_QUEUE.clear()
             RT_QUEUE.extend(to_load["RT_QUEUE"])
+            RT_QUEUE.reload(bot.get_guild(shared.LOUNGE_GUILD_ID))
             CT_QUEUE.clear()
             CT_QUEUE.extend(to_load["CT_QUEUE"])
+            CT_QUEUE.reload(bot.get_guild(shared.LOUNGE_GUILD_ID))
             global RT_QUEUE_CATEGORY
             RT_QUEUE_CATEGORY = to_load["RT_QUEUE_CATEGORY"]
             global CT_QUEUE_CATEGORY
@@ -783,6 +784,7 @@ def load_data():
     except Exception as e:
         logging.critical("Failed to load main pickle:")
         logging.critical(e)
+        raise e
     rating.load_data()
     fc_commands.load_data()
     print("All data loaded.")
@@ -813,7 +815,7 @@ def update_queued_player_ratings(ladder_type: str):
         if player_rating is not None:
             player.mmr = player_rating[2]
             player.lr = player_rating[3]
-            print(f"Updated {player.name} MMR to {player.mmr} and LR to {player.lr}")
+            # print(f"Updated {player.name} MMR to {player.mmr} and LR to {player.lr}")
 
 
 @tasks.loop(minutes=30, reconnect=True)
@@ -1094,7 +1096,6 @@ def mention(user: int | game_queue.Player):
 
 
 if __name__ == "__main__":
-    load_data()
     if shared.RUN_UNIT_TESTS:
         test_rooms.set_room(Room)
         suite = unittest.TestLoader().loadTestsFromModule(test_rooms)
