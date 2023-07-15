@@ -6,3 +6,6 @@
  - How long a potential lineup's players have spent waiting in the queue
  - The number of players sitting in the main queue
  - How far away a potential lineup's average MMR is from the median MMR in Lounge
+
+# July 15th, 2023 Update
+The project has been killed. Lounge staff did not respond to repeated requests to schedule a trial run.
